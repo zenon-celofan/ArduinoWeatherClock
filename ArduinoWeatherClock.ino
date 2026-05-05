@@ -316,12 +316,6 @@ void saveAutoUpdate(bool enabled) {
   EEPROM.commit();
 }
 
-// Save auto-update setting to EEPROM
-void saveAutoUpdate(bool enabled) {
-  EEPROM.write(AUTO_UPDATE_ADDR, enabled ? 1 : 0);
-  EEPROM.commit();
-}
-
 // Load time display duration from EEPROM
 int loadTimeDisplayDuration() {
   int duration = EEPROM.read(TIME_DISPLAY_DURATION_ADDR) << 8;
