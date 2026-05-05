@@ -29,10 +29,10 @@
 
 // Firmware version and OTA update tracking
 #define FIRMWARE_VERSION "0.1.0"
-#define UPDATE_PENDING_ADDR 114   // 1 byte: 0=stable, 1=pending verification
-#define UPDATE_ATTEMPTS_ADDR 115  // 1 byte: consecutive failed update count
+#define UPDATE_PENDING_ADDR 118   // 1 byte: 0=stable, 1=pending verification
+#define UPDATE_ATTEMPTS_ADDR 119  // 1 byte: consecutive failed update count
 #define MAX_UPDATE_ATTEMPTS 2
-#define AUTO_UPDATE_ADDR 116      // 1 byte: 0=disabled, 1=enabled
+#define AUTO_UPDATE_ADDR 120      // 1 byte: 0=disabled, 1=enabled
 
 #define GITHUB_REPO_URL "https://github.com/zenon-celofan/ArduinoWeatherClock"
 
@@ -789,6 +789,9 @@ void setup() {
   displayMode = loadDisplayMode();
   timeDisplayDuration = loadTimeDisplayDuration();
   tempDisplayDuration = loadTempDisplayDuration();
+
+  byte auVal = EEPROM.read(AUTO_UPDATE_ADDR);
+  Serial.printf("EEPROM AUTO_UPDATE_ADDR(%d) = %d\n", AUTO_UPDATE_ADDR, auVal);
 
   matrixDisplay.setIntensity(brightness); // Set initial brightness level
 
