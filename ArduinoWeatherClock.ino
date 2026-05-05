@@ -74,10 +74,84 @@ bool showTime = true; // Variable to toggle between time and temperature
 String lokiIP;
 String lokiURL;
 
+// OTA update variables
+String latestVersion = "";
+String updateUrl = "";
 
+// Forward declarations
 bool connectToWiFi(const String &ssid, const String &password);
 void displayTemperature();
+int semverCompare(const String &v1, const String &v2);
+bool checkForUpdates(String &latestTag, String &downloadUrl);
 
+// Compare two semver strings: returns 1 if v1 > v2, -1 if v1 < v2, 0 if equal
+int semverCompare(const String &v1, const String &v2) {
+  String s1 = v1, s2 = v2;
+  s1.replace("v", ""); s2.replace("v", "");
+  
+  int major1 = 0, minor1 = 0, patch1 = 0;
+  int major2 = 0, minor2 = 0, patch2 = 0;
+  
+  sscanf(s1.c_str(), "%d.%d.%d", &major1, &minor1, &patch1);
+  sscanf(s2.c_str(), "%d.%d.%d", &major2, &minor2, &patch2);
+  
+  if (major1 > major2) return 1;
+  if (major1 < major2) return -1;
+  if (minor1 > minor2) return 1;
+  if (minor1 < minor2) return -1;
+  if (patch1 > patch2) return 1;
+  if (patch1 < patch2) return -1;
+  return 0;
+}
+
+// Check GitHub for latest release
+bool checkForUpdates(String &latestTag, String &downloadUrl) {
+  const String apiUrl = "https://api.github.com/repos/zenon-celofan/ArduinoWeatherClock/releases/latest";
+  
+  HTTPClient http;
+  WiFiClientSecure client;
+  client.setInsecure();
+  
+  Serial.println("Checking GitHub for updates...");
+  http.begin(client, apiUrl);
+  http.addHeader("Accept", "application/vnd.github+json");
+  http.addHeader("User-Agent", "ESP8266-Weather-Clock");
+  
+  int httpCode = http.GET();
+  if (httpCode != HTTP_CODE_OK) {
+    Serial.printf("GitHub API error: %d\n", httpCode);
+    loki("GitHub API error: " + String(httpCode));
+    http.end();
+    return false;
+  }
+  
+  String payload = http.getString();
+  http.end();
+  
+  StaticJsonDocument<1024> doc;
+  DeserializationError error = deserializeJson(doc, payload);
+  if (error) {
+    Serial.printf("JSON parse error: %s\n", error.f_str());
+    return false;
+  }
+  
+  latestTag = doc["tag_name"].as<String>();
+  
+  if (doc["assets"].size() > 0) {
+    downloadUrl = doc["assets"][0]["browser_download_url"].as<String>();
+  }
+  
+  if (latestTag.length() == 0) {
+    Serial.println("No release found on GitHub");
+    return false;
+  }
+  
+  int cmp = semverCompare(latestTag, FIRMWARE_VERSION);
+  Serial.printf("Current: %s, Latest: %s, Update available: %s\n", 
+    FIRMWARE_VERSION, latestTag.c_str(), cmp > 0 ? "YES" : "NO");
+  
+  return cmp > 0;
+}
 
 // Function to initialize Loki configuration
 void initLokiConfig() {
