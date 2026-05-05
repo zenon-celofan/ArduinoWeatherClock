@@ -170,45 +170,52 @@ void initLokiConfig() {
 
 // Function to send log to Loki server
 void loki(const String &logMessage) {
-  if (WiFi.status() == WL_CONNECTED) {
-    HTTPClient http;
-    WiFiClient client;
+  if (WiFi.status() != WL_CONNECTED) {
+    Serial.println("WiFi not connected. Cannot send log to Loki.");
+    return;
+  }
+  if (lokiURL.length() == 0) {
+    Serial.println("Loki URL not configured.");
+    return;
+  }
+
+  HTTPClient http;
+  WiFiClient client;
 
   struct timeval tv;
-  gettimeofday(&tv, NULL); // Get current time with seconds and microseconds
+  gettimeofday(&tv, NULL);
 
-  // Calculate nanoseconds since Unix epoch
-  unsigned long long epochNanoseconds = 
-      (unsigned long long)(tv.tv_sec) * 1000000000ULL + 
+  unsigned long long epochNanoseconds =
+      (unsigned long long)(tv.tv_sec) * 1000000000ULL +
       (unsigned long long)(tv.tv_usec) * 1000ULL;
 
-    // Create JSON payload
-    StaticJsonDocument<512> jsonDoc;
-    jsonDoc["streams"][0]["stream"]["job"] = "current_job";
-    jsonDoc["streams"][0]["stream"]["level"] = "info";
-    jsonDoc["streams"][0]["values"][0][0] = String(epochNanoseconds);
-    jsonDoc["streams"][0]["values"][0][1] = logMessage;
+  StaticJsonDocument<512> jsonDoc;
+  jsonDoc["streams"][0]["stream"]["job"] = "current_job";
+  jsonDoc["streams"][0]["stream"]["level"] = "info";
+  jsonDoc["streams"][0]["values"][0][0] = String(epochNanoseconds);
+  jsonDoc["streams"][0]["values"][0][1] = logMessage;
 
-    String jsonPayload;
-    serializeJson(jsonDoc, jsonPayload);
+  String jsonPayload;
+  serializeJson(jsonDoc, jsonPayload);
 
-    // Send the request
-    http.begin(client, lokiURL);
-    http.addHeader("Content-Type", "application/json");
+  Serial.printf("Loki URL: %s\n", lokiURL.c_str());
+  Serial.printf("Loki payload: %s\n", jsonPayload.c_str());
 
-    int httpResponseCode = http.POST(jsonPayload);
-    if (httpResponseCode > 0) {
-      String response = http.getString();
-      Serial.println("Log sent to Loki: " + logMessage);
-      Serial.println("Request: " + jsonPayload);
-      Serial.println("Response: " + response);
-    } else {
-      Serial.println("Failed to send log to Loki. HTTP response code: " + String(httpResponseCode));
-    }
-    http.end();
+  http.begin(client, lokiURL);
+  http.addHeader("Content-Type", "application/json");
+
+  int httpResponseCode = http.POST(jsonPayload);
+  if (httpResponseCode > 0) {
+    String response = http.getString();
+    Serial.println("Log sent to Loki: " + logMessage);
+    Serial.println("Response: " + response);
   } else {
-    Serial.println("WiFi not connected. Cannot send log to Loki.");
+    Serial.println("Failed to send log to Loki. HTTP response code: " + String(httpResponseCode));
+    if (httpResponseCode < 0) {
+      Serial.println("Connection error (negative HTTP code). Check Loki server connectivity.");
+    }
   }
+  http.end();
 }
 
 void reconnectWifi() {
@@ -297,7 +304,16 @@ void saveDisplayMode(int mode) {
 
 // Load auto-update setting from EEPROM
 bool loadAutoUpdate() {
-  return EEPROM.read(AUTO_UPDATE_ADDR) == 1;
+  byte val = EEPROM.read(AUTO_UPDATE_ADDR);
+  Serial.printf("loadAutoUpdate - read byte at %d: %d, returning %s\n",
+    AUTO_UPDATE_ADDR, val, val == 1 ? "true" : "false");
+  return val == 1;
+}
+
+void saveAutoUpdate(bool enabled) {
+  Serial.printf("saveAutoUpdate - writing %d to addr %d\n", enabled ? 1 : 0, AUTO_UPDATE_ADDR);
+  EEPROM.write(AUTO_UPDATE_ADDR, enabled ? 1 : 0);
+  EEPROM.commit();
 }
 
 // Save auto-update setting to EEPROM
@@ -350,6 +366,8 @@ void serveConfigPage() {
   String lokiIP4 = readStringFromEEPROM(LOKI_IP4_ADDR, 3);
   String lokiPort = readStringFromEEPROM(LOKI_PORT_ADDR, 5);
   bool autoUpdate = loadAutoUpdate();
+  Serial.printf("Config page loaded - auto_update from EEPROM: %s (addr %d)\n",
+    autoUpdate ? "true" : "false", AUTO_UPDATE_ADDR);
 
   String html = R"rawliteral(
     <!DOCTYPE html>
@@ -523,6 +541,9 @@ void handleSaveConfig() {
     String lokiIP4 = server.arg("loki_ip4");
     String lokiPort = server.arg("loki_port");
     bool autoUpdate = (server.arg("auto_update") == "1");
+
+    Serial.printf("Form received - auto_update param: '%s', parsed: %s\n",
+      server.arg("auto_update").c_str(), autoUpdate ? "true" : "false");
 
     saveWiFiCredentials(ssid, password);
     saveLocationData(latitude, longitude);
