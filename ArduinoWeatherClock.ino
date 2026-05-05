@@ -501,6 +501,7 @@ void serveConfigPage() {
             </div>
             <div class="update-section">
                 <div>Auto Update:</div>
+                <input type="hidden" name="auto_update" value="0">
                 <div class="checkbox-row">
                     <input type="checkbox" id="auto_update" name="auto_update" value="1" )rawliteral" + (autoUpdate ? "checked" : "") + R"rawliteral(">
                     <label for="auto_update">Enable auto-update on boot</label>
@@ -521,6 +522,12 @@ void serveConfigPage() {
 // Handle saving WiFi credentials, location data, brightness, display mode, and display times
 void handleSaveConfig() {
   if (server.method() == HTTP_POST) {
+    Serial.println("=== FORM POST RECEIVED ===");
+    for (int i = 0; i < server.args(); i++) {
+      Serial.printf("Param %d: name='%s', value='%s'\n", i, server.argName(i).c_str(), server.arg(i).c_str());
+    }
+    Serial.println("==========================");
+    
     String ssid = server.arg("ssid");
     String password = server.arg("password");
     String latitude = server.arg("latitude");
