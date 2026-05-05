@@ -490,7 +490,7 @@ void serveConfigPage() {
             <div class="update-section">
                 <div>Auto Update:</div>
                 <div class="checkbox-row">
-                    <input type="checkbox" id="auto_update" name="auto_update" )rawliteral" + (autoUpdate ? "checked" : "") + R"rawliteral(">
+                    <input type="checkbox" id="auto_update" name="auto_update" value="1" )rawliteral" + (autoUpdate ? "checked" : "") + R"rawliteral(">
                     <label for="auto_update">Enable auto-update on boot</label>
                 </div>
                 <div class="field-description">When enabled, the clock will check for new firmware on reboot and update automatically.</div>
@@ -522,7 +522,7 @@ void handleSaveConfig() {
     String lokiIP3 = server.arg("loki_ip3");
     String lokiIP4 = server.arg("loki_ip4");
     String lokiPort = server.arg("loki_port");
-    bool autoUpdate = server.hasArg("auto_update");
+    bool autoUpdate = (server.arg("auto_update") == "1");
 
     saveWiFiCredentials(ssid, password);
     saveLocationData(latitude, longitude);
