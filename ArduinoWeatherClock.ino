@@ -11,7 +11,7 @@
 #include <AsyncTimer.h>
 
 // Constants for EEPROM
-#define EEPROM_SIZE 121 // Updated EEPROM size to accommodate new fields
+#define EEPROM_SIZE 125
 #define SSID_ADDR 0
 #define PASS_ADDR 32
 #define FLAG_ADDR 64
@@ -26,6 +26,12 @@
 #define LOKI_IP3_ADDR 107
 #define LOKI_IP4_ADDR 110
 #define LOKI_PORT_ADDR 113
+
+// Firmware version and OTA update tracking
+#define FIRMWARE_VERSION "0.1.0"
+#define UPDATE_PENDING_ADDR 114   // 1 byte: 0=stable, 1=pending verification
+#define UPDATE_ATTEMPTS_ADDR 115  // 1 byte: consecutive failed update count
+#define MAX_UPDATE_ATTEMPTS 2
 
 
 // Variables for WiFi and WebServer
