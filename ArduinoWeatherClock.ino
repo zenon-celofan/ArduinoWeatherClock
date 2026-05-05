@@ -11,7 +11,7 @@
 #include <AsyncTimer.h>
 
 // Constants for EEPROM
-#define EEPROM_SIZE 125
+#define EEPROM_SIZE 127
 #define SSID_ADDR 0
 #define PASS_ADDR 32
 #define FLAG_ADDR 64
@@ -32,6 +32,9 @@
 #define UPDATE_PENDING_ADDR 114   // 1 byte: 0=stable, 1=pending verification
 #define UPDATE_ATTEMPTS_ADDR 115  // 1 byte: consecutive failed update count
 #define MAX_UPDATE_ATTEMPTS 2
+#define AUTO_UPDATE_ADDR 116      // 1 byte: 0=disabled, 1=enabled
+
+#define GITHUB_REPO_URL "https://github.com/zenon-celofan/ArduinoWeatherClock"
 
 
 // Variables for WiFi and WebServer
@@ -292,6 +295,17 @@ void saveDisplayMode(int mode) {
   EEPROM.commit();
 }
 
+// Load auto-update setting from EEPROM
+bool loadAutoUpdate() {
+  return EEPROM.read(AUTO_UPDATE_ADDR) == 1;
+}
+
+// Save auto-update setting to EEPROM
+void saveAutoUpdate(bool enabled) {
+  EEPROM.write(AUTO_UPDATE_ADDR, enabled ? 1 : 0);
+  EEPROM.commit();
+}
+
 // Load time display duration from EEPROM
 int loadTimeDisplayDuration() {
   int duration = EEPROM.read(TIME_DISPLAY_DURATION_ADDR) << 8;
@@ -335,6 +349,7 @@ void serveConfigPage() {
   String lokiIP3 = readStringFromEEPROM(LOKI_IP3_ADDR, 3);
   String lokiIP4 = readStringFromEEPROM(LOKI_IP4_ADDR, 3);
   String lokiPort = readStringFromEEPROM(LOKI_PORT_ADDR, 5);
+  bool autoUpdate = loadAutoUpdate();
 
   String html = R"rawliteral(
     <!DOCTYPE html>
@@ -411,6 +426,32 @@ void serveConfigPage() {
                 display: inline-block; 
                 margin-right: 2%;
             }
+            .checkbox-row {
+                display: flex;
+                align-items: center;
+                margin: 10px 0;
+            }
+            .checkbox-row input[type="checkbox"] {
+                width: auto;
+                margin-right: 8px;
+                margin-top: 0;
+                margin-bottom: 0;
+            }
+            .checkbox-row label {
+                font-size: 16px;
+                color: #333;
+            }
+            .repo-link {
+                font-size: 14px;
+                color: #007BFF;
+                margin-top: -5px;
+                margin-bottom: 10px;
+            }
+            .update-section {
+                margin-top: 15px;
+                padding-top: 10px;
+                border-top: 1px solid #ddd;
+            }
         </style>
     </head>
     <body>
@@ -446,6 +487,15 @@ void serveConfigPage() {
                 <input type="number" name="loki_port" value=")rawliteral" + lokiPort + R"rawliteral(" placeholder="Loki Server Port" required>
                 <div class="field-description">Enter the port for the Loki server.</div>
             </div>
+            <div class="update-section">
+                <div>Auto Update:</div>
+                <div class="checkbox-row">
+                    <input type="checkbox" id="auto_update" name="auto_update" )rawliteral" + (autoUpdate ? "checked" : "") + R"rawliteral(">
+                    <label for="auto_update">Enable auto-update on boot</label>
+                </div>
+                <div class="field-description">When enabled, the clock will check for new firmware on reboot and update automatically.</div>
+                <div class="repo-link">Source: <a href=")rawliteral" + GITHUB_REPO_URL + R"rawliteral(" target="_blank">)rawliteral" + GITHUB_REPO_URL + R"rawliteral(</a></div>
+            </div>
             <button type="submit">Save</button>
         </form>
     </body>
@@ -472,6 +522,7 @@ void handleSaveConfig() {
     String lokiIP3 = server.arg("loki_ip3");
     String lokiIP4 = server.arg("loki_ip4");
     String lokiPort = server.arg("loki_port");
+    bool autoUpdate = server.hasArg("auto_update");
 
     saveWiFiCredentials(ssid, password);
     saveLocationData(latitude, longitude);
@@ -479,6 +530,7 @@ void handleSaveConfig() {
     saveDisplayMode(displayMode);
     saveTimeDisplayDuration(timeDisplayDuration);
     saveTempDisplayDuration(tempDisplayDuration);
+    saveAutoUpdate(autoUpdate);
     
     // Save Loki server configuration
     writeStringToEEPROM(LOKI_IP1_ADDR, lokiIP1, 3);
