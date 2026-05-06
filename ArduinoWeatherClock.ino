@@ -114,83 +114,67 @@ int semverCompare(const String &v1, const String &v2) {
 
 // Check GitHub for latest release
 bool checkForUpdates(String &latestTag, String &downloadUrl) {
-  const String apiUrl = "https://api.github.com/repos/zenon-celofan/ArduinoWeatherClock/releases/latest";
+  const String versionUrl = "https://raw.githubusercontent.com/zenon-celofan/ArduinoWeatherClock/main/latest_version.txt";
+  const String releasesUrl = "https://api.github.com/repos/zenon-celofan/ArduinoWeatherClock/releases/latest";
   
   HTTPClient http;
   BearSSL::WiFiClientSecure client;
   client.setInsecure();
+  client.setBufferSizes(4096, 4096);
   
-  Serial.print("Query URL: ");
-  Serial.println(apiUrl);
-  Serial.println("Connecting to GitHub...");
+  Serial.print("Checking version at: ");
+  Serial.println(versionUrl);
   
-  http.begin(client, apiUrl);
-  http.addHeader("Accept", "application/vnd.github+json");
-  http.addHeader("User-Agent", "ESP8266-Weather-Clock");
+  http.begin(client, versionUrl);
+  http.setTimeout(10000);
   
-  Serial.println("Sending HTTP GET...");
   int httpCode = http.GET();
-  Serial.printf("HTTP response code: %d\n", httpCode);
+  Serial.printf("Version check HTTP code: %d\n", httpCode);
   
   if (httpCode != HTTP_CODE_OK) {
-    Serial.printf("GitHub API error: %d\n", httpCode);
-    loki("GitHub API error: " + String(httpCode));
+    Serial.printf("Version check failed: %d\n", httpCode);
+    loki("GitHub version check failed: " + String(httpCode));
     http.end();
     return false;
   }
   
-  int payloadLen = http.getSize();
-  Serial.printf("Response Content-Length: %d\n", payloadLen);
-  
-  uint8_t buff[128] = { 0 };
-  WiFiClient *stream = http.getStreamPtr();
-  
-  String payload;
-  payload.reserve(payloadLen > 4096 ? 4096 : payloadLen + 64);
-  
-  unsigned long start = millis();
-  while (http.connected() && (payloadLen > 0 || payloadLen == -1)) {
-    if (millis() - start > 15000) {
-      Serial.println("Timeout reading response");
-      break;
-    }
-    size_t avail = stream->available();
-    if (avail) {
-      size_t toRead = (avail > sizeof(buff)) ? sizeof(buff) : avail;
-      size_t read = stream->readBytes(buff, toRead);
-      payload += String((const char*)buff).substring(0, read);
-      if (payloadLen > 0) payloadLen -= read;
-      start = millis();
-      if (payload.length() > 4096) break;
-    }
-    yield();
-  }
+  latestTag = http.getString().trim();
   http.end();
   
-  Serial.printf("Payload received: %d bytes\n", payload.length());
-  Serial.printf("First 500 chars: %s\n", payload.substring(0, 500).c_str());
-  
-  StaticJsonDocument<1024> doc;
-  DeserializationError error = deserializeJson(doc, payload);
-  if (error) {
-    Serial.printf("JSON parse error: %s\n", error.f_str());
-    return false;
-  }
-  
-  latestTag = doc["tag_name"].as<String>();
-  
-  if (doc["assets"].size() > 0) {
-    downloadUrl = doc["assets"][0]["browser_download_url"].as<String>();
-  }
-  
   if (latestTag.length() == 0) {
-    Serial.println("No release found on GitHub");
+    Serial.println("Empty version string from GitHub");
     return false;
   }
+  
+  Serial.printf("Remote version: %s, Local version: %s\n", latestTag.c_str(), FIRMWARE_VERSION);
   
   int cmp = semverCompare(latestTag, FIRMWARE_VERSION);
-  Serial.printf("Current: %s, Latest: %s, Update available: %s\n", 
-    FIRMWARE_VERSION, latestTag.c_str(), cmp > 0 ? "YES" : "NO");
+  Serial.printf("Update available: %s\n", cmp > 0 ? "YES" : "NO");
+  
+  if (cmp > 0) {
+    client.setInsecure();
+    client.setBufferSizes(4096, 4096);
+    
+    http.begin(client, releasesUrl);
+    http.setTimeout(10000);
+    http.addHeader("Accept", "application/vnd.github+json");
+    http.addHeader("User-Agent", "ESP8266-Weather-Clock");
+    
+    httpCode = http.GET();
+    Serial.printf("Releases API HTTP code: %d\n", httpCode);
+    
+    if (httpCode == HTTP_CODE_OK) {
+      StaticJsonDocument<1024> doc;
+      DeserializationError error = deserializeJson(doc, http.getString());
+      if (!error && doc["assets"].size() > 0) {
+        downloadUrl = doc["assets"][0]["browser_download_url"].as<String>();
+        Serial.printf("Download URL: %s\n", downloadUrl.c_str());
+      } else {
+        Serial.println("Failed to parse releases JSON");
+      }
+    }
+    http.end();
+  }
   
   return cmp > 0;
 }
