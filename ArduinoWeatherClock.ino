@@ -30,7 +30,7 @@
 #define LOKI_PORT_ADDR 113
 
 // Firmware version and OTA update tracking
-#define FIRMWARE_VERSION "0.1.2"
+#define FIRMWARE_VERSION "0.1.4"
 #define UPDATE_PENDING_ADDR 118   // 1 byte: 0=stable, 1=pending verification
 #define UPDATE_ATTEMPTS_ADDR 119  // 1 byte: consecutive failed update count
 #define MAX_UPDATE_ATTEMPTS 2
@@ -974,6 +974,8 @@ void setup() {
 
   // Initialize Loki configuration
   initLokiConfig();
+
+  Serial.printf("Firmware version: %s\n", FIRMWARE_VERSION);
 
   // Get the MAC address
   String macAddress = WiFi.macAddress();
