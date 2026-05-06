@@ -574,8 +574,9 @@ void serveConfigPage() {
             </div>
             <div class="update-section">
                 <div>Auto Update:</div>
+                <input type="hidden" name="auto_update" value="0">
                 <div class="checkbox-row">
-                    <input type="checkbox" id="auto_update" name="auto_update" value="1" )rawliteral" + (autoUpdate ? "checked" : "") + R"rawliteral(">
+                    <input type="checkbox" id="auto_update" name="auto_update" value="1")rawliteral" + (autoUpdate ? " checked" : "") + R"rawliteral(>
                     <label for="auto_update">Enable auto-update on boot</label>
                 </div>
                 <div class="field-description">When enabled, the clock will check for new firmware on reboot and update automatically.</div>
@@ -613,10 +614,15 @@ void handleSaveConfig() {
     String lokiIP3 = server.arg("loki_ip3");
     String lokiIP4 = server.arg("loki_ip4");
     String lokiPort = server.arg("loki_port");
-    bool autoUpdate = server.hasArg("auto_update");
+    bool autoUpdate = false;
+    for (int i = 0; i < server.args(); i++) {
+      if (server.argName(i) == "auto_update" && server.arg(i) == "1") {
+        autoUpdate = true;
+        break;
+      }
+    }
 
-    Serial.printf("Form received - auto_update param: '%s', parsed: %s\n",
-      server.arg("auto_update").c_str(), autoUpdate ? "true" : "false");
+    Serial.printf("Form received - auto_update parsed: %s\n", autoUpdate ? "true" : "false");
 
     saveWiFiCredentials(ssid, password);
     saveLocationData(latitude, longitude);
@@ -635,7 +641,9 @@ void handleSaveConfig() {
     EEPROM.commit();
 
     server.send(200, "text/html", "<h1>Configuration Saved!</h1><p>Rebooting...</p>");
-    delay(2000);
+    Serial.println("Rebooting now...");
+    Serial.flush();
+    delay(500);
     ESP.restart();
   } else {
     server.send(405, "text/plain", "Method Not Allowed");
@@ -861,9 +869,6 @@ void setup() {
   displayMode = loadDisplayMode();
   timeDisplayDuration = loadTimeDisplayDuration();
   tempDisplayDuration = loadTempDisplayDuration();
-
-  byte auVal = EEPROM.read(AUTO_UPDATE_ADDR);
-  Serial.printf("EEPROM AUTO_UPDATE_ADDR(%d) = %d\n", AUTO_UPDATE_ADDR, auVal);
 
   matrixDisplay.setIntensity(brightness); // Set initial brightness level
 
