@@ -30,7 +30,7 @@
 #define LOKI_PORT_ADDR 113
 
 // Firmware version and OTA update tracking
-#define FIRMWARE_VERSION "0.1.7"
+#define FIRMWARE_VERSION "0.1.8"
 #define UPDATE_PENDING_ADDR 118   // 1 byte: 0=stable, 1=pending verification
 #define UPDATE_ATTEMPTS_ADDR 119  // 1 byte: consecutive failed update count
 #define MAX_UPDATE_ATTEMPTS 2
@@ -65,6 +65,11 @@ int tempDisplayDuration = 5; // Variable to store the display duration for tempe
 
 // Tickers for periodic tasks
 AsyncTimer t;
+
+// WiFi connectivity tracking
+unsigned long lastWifiConnectedAt = 0;
+unsigned long wifiDisconnectedSince = 0;
+bool wifiWasEverConnected = false;
 
 // Define LED Matrix configuration
 #define HARDWARE_TYPE MD_MAX72XX::FC16_HW
@@ -373,12 +378,16 @@ void loki(const String &logMessage) {
 }
 
 void reconnectWifi() {
-  // Check Wi-Fi connection status
   if (WiFi.status() != WL_CONNECTED) {
+    if (wifiDisconnectedSince == 0) wifiDisconnectedSince = millis();
     Serial.println("Wi-Fi disconnected. Attempting to reconnect...");
     connectToWiFi(ssid, password);
   } else {
-    Serial.println("Wi-Fi connected.");
+    if (wifiDisconnectedSince > 0) {
+      Serial.printf("Wi-Fi reconnected after %lu seconds\n", (millis() - wifiDisconnectedSince) / 1000);
+    }
+    lastWifiConnectedAt = millis();
+    wifiDisconnectedSince = 0;
   }
 }
 
@@ -837,12 +846,16 @@ bool connectToWiFi(const String &ssid, const String &password) {
       Serial.println("\nConnected!");
       Serial.print("IP Address: ");
       Serial.println(WiFi.localIP());
+      lastWifiConnectedAt = millis();
+      wifiWasEverConnected = true;
+      wifiDisconnectedSince = 0;
       return true;
     }
     delay(500);
     Serial.print(".");
   }
   Serial.println("\nFailed to connect.");
+  if (wifiDisconnectedSince == 0) wifiDisconnectedSince = millis();
   return false;
 }
 
@@ -917,6 +930,9 @@ void updateLocalTemperatureAndTimezone() {
 void refreshDisplay() {
   uptime_seconds++;
   char displayStr[8];
+
+  bool wifiStale = wifiWasEverConnected && wifiDisconnectedSince > 0 && (millis() - wifiDisconnectedSince) > 60000;
+
   if (apMode) {
     matrixDisplay.setTextAlignment(PA_CENTER);
     snprintf(displayStr, sizeof(displayStr), "AP");
@@ -924,13 +940,29 @@ void refreshDisplay() {
     getLocalTime(&timeinfo);
     matrixDisplay.setTextAlignment(PA_RIGHT);
     snprintf(displayStr, sizeof(displayStr), "%d%02d", timeinfo.tm_hour, timeinfo.tm_min);
+    if (wifiStale) {
+      matrixDisplay.setFont(BigFontNew);
+      matrixDisplay.setIntensity(brightness);
+      matrixDisplay.print(displayStr);
+      matrixDisplay.setTextAlignment(PA_LEFT);
+      matrixDisplay.print("E");
+      return;
+    }
   } else {
     int temp = round(localtemp);
     matrixDisplay.setTextAlignment(PA_CENTER);
     snprintf(displayStr, sizeof(displayStr), temp > 0 ? "+%d" : "%d", temp);
+    if (wifiStale) {
+      matrixDisplay.setFont(BigFontNew);
+      matrixDisplay.setIntensity(brightness);
+      matrixDisplay.print(displayStr);
+      matrixDisplay.setTextAlignment(PA_LEFT);
+      matrixDisplay.print("E");
+      return;
+    }
   }
-  matrixDisplay.setFont(BigFontNew); // Use the custom font
-  matrixDisplay.setIntensity(brightness); // Set display brightness
+  matrixDisplay.setFont(BigFontNew);
+  matrixDisplay.setIntensity(brightness);
   matrixDisplay.print(displayStr);
 }
 
