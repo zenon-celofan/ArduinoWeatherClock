@@ -87,10 +87,16 @@ String updateUrl = "";
 // Forward declarations
 bool connectToWiFi(const String &ssid, const String &password);
 void displayTemperature();
+void loki(const String &logMessage);
 int semverCompare(const String &v1, const String &v2);
 bool checkForUpdates(String &latestTag, String &downloadUrl);
 bool performOTAUpdate(const String &url);
 void handleUpdateBootCheck();
+bool loadLokiEnabled();
+String readStringFromEEPROM(int startAddr, int length);
+void writeStringToEEPROM(int startAddr, const String &str, int maxLength);
+void loadLocationData(String &latitude, String &longitude);
+void saveLocationData(const String &latitude, const String &longitude);
 
 // Compare two semver strings: returns 1 if v1 > v2, -1 if v1 < v2, 0 if equal
 int semverCompare(const String &v1, const String &v2) {
@@ -219,7 +225,7 @@ bool performOTAUpdate(const String &url) {
   WiFiClient *stream = http.getStreamPtr();
 
   if (!Update.begin(contentLength, U_FLASH)) {
-    Serial.printf("Update.begin failed: %s\n", Update.errorString());
+    Serial.printf("Update.begin failed: %s\n", Update.getErrorString());
     http.end();
     return false;
   }
@@ -254,12 +260,10 @@ bool performOTAUpdate(const String &url) {
     loki("OTA update successful, rebooting");
     return true;
   } else {
-    Serial.printf("Flash failed: %s\n", Update.errorString());
-    loki("OTA flash failed: " + String(Update.errorString()));
+    Serial.printf("Flash failed: %s\n", Update.getErrorString());
+    loki("OTA flash failed: " + String(Update.getErrorString()));
     return false;
   }
-}
-  return false;
 }
 
 // Handle boot-time update check and rollback
