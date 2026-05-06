@@ -1,6 +1,7 @@
 #include <ESP8266WiFi.h>
 #include <ESP8266WebServer.h>
 #include <ESP8266HTTPClient.h>
+#include <ESP8266httpUpdate.h>
 #include <EEPROM.h>
 #include <time.h>
 #include <MD_Parola.h>
@@ -86,6 +87,8 @@ bool connectToWiFi(const String &ssid, const String &password);
 void displayTemperature();
 int semverCompare(const String &v1, const String &v2);
 bool checkForUpdates(String &latestTag, String &downloadUrl);
+bool performOTAUpdate(const String &url);
+void handleUpdateBootCheck();
 
 // Compare two semver strings: returns 1 if v1 > v2, -1 if v1 < v2, 0 if equal
 int semverCompare(const String &v1, const String &v2) {
@@ -154,6 +157,76 @@ bool checkForUpdates(String &latestTag, String &downloadUrl) {
     FIRMWARE_VERSION, latestTag.c_str(), cmp > 0 ? "YES" : "NO");
   
   return cmp > 0;
+}
+
+// Perform OTA update using ESPhttpUpdate
+bool performOTAUpdate(const String &url) {
+  Serial.printf("Starting OTA update from: %s\n", url.c_str());
+  loki("OTA update starting from: " + url);
+
+  WiFiClient client;
+  ESPhttpUpdate.rebootOnUpdate(false);
+
+  t_httpUpdate_return ret = ESPhttpUpdate.update(client, url);
+
+  switch (ret) {
+    case HTTP_UPDATE_FAILED:
+      Serial.printf("HTTP_UPDATE_FAILED: Error(%d): %s\n",
+        ESPhttpUpdate.getLastError(), ESPhttpUpdate.getLastErrorString().c_str());
+      loki("OTA update failed: " + ESPhttpUpdate.getLastErrorString());
+      return false;
+    case HTTP_UPDATE_NO_UPDATES:
+      Serial.println("HTTP_UPDATE_NO_UPDATES");
+      return false;
+    case HTTP_UPDATE_OK:
+      Serial.println("HTTP_UPDATE_OK - rebooting");
+      loki("OTA update successful, rebooting");
+      return true;
+  }
+  return false;
+}
+
+// Handle boot-time update check and rollback
+void handleUpdateBootCheck() {
+  byte pending = EEPROM.read(UPDATE_PENDING_ADDR);
+  byte attempts = EEPROM.read(UPDATE_ATTEMPTS_ADDR);
+
+  if (pending == 1) {
+    Serial.printf("Update pending detected (attempts: %d)\n", attempts);
+    loki("Update pending detected, attempt " + String(attempts + 1));
+
+    if (attempts >= MAX_UPDATE_ATTEMPTS) {
+      Serial.println("Max update attempts reached, disabling auto-update");
+      loki("Max update attempts reached, disabling auto-update");
+      EEPROM.write(AUTO_UPDATE_ADDR, 0);
+      EEPROM.write(UPDATE_PENDING_ADDR, 0);
+      EEPROM.write(UPDATE_ATTEMPTS_ADDR, 0);
+      EEPROM.commit();
+      return;
+    }
+
+    EEPROM.write(UPDATE_ATTEMPTS_ADDR, attempts + 1);
+    EEPROM.commit();
+
+    Serial.printf("Waiting 10s sanity timer (attempt %d/%d)...\n",
+      attempts + 1, MAX_UPDATE_ATTEMPTS);
+
+    unsigned long start = millis();
+    while (millis() - start < 10000) {
+      server.handleClient();
+      matrixDisplay.displayAnimate();
+      t.handle();
+    }
+
+    Serial.println("Sanity timer passed - marking update as verified");
+    loki("Update verified after sanity timer");
+    EEPROM.write(UPDATE_PENDING_ADDR, 0);
+    EEPROM.write(UPDATE_ATTEMPTS_ADDR, 0);
+    EEPROM.commit();
+  } else {
+    EEPROM.write(UPDATE_ATTEMPTS_ADDR, 0);
+    EEPROM.commit();
+  }
 }
 
 // Function to initialize Loki configuration
@@ -799,6 +872,33 @@ void setup() {
     Serial.println("WiFi connected using stored credentials.");
     ntpSyncEnabled = true;
     displayIPAddress(); // Display IP address in parts
+
+    handleUpdateBootCheck();
+
+    bool autoUpdate = loadAutoUpdate();
+    if (autoUpdate) {
+      String latestTag, downloadUrl;
+      if (checkForUpdates(latestTag, downloadUrl)) {
+        Serial.printf("Update available: %s\n", latestTag.c_str());
+        loki("Update available: " + latestTag);
+        EEPROM.write(UPDATE_PENDING_ADDR, 1);
+        EEPROM.commit();
+
+        matrixDisplay.setTextAlignment(PA_CENTER);
+        matrixDisplay.setFont(BigFontNew);
+        matrixDisplay.print("UPD");
+
+        if (performOTAUpdate(downloadUrl)) {
+          ESP.restart();
+        } else {
+          Serial.println("Update failed, continuing with current firmware");
+          matrixDisplay.print("ERR");
+          delay(2000);
+        }
+      } else {
+        Serial.println("No updates available");
+      }
+    }
   } else {
     Serial.println("Starting Access Point for configuration...");
 
