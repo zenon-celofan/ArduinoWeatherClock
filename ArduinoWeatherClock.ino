@@ -10,6 +10,7 @@
 #include <ArduinoJson.h>
 #include "CustomFont.h"
 #include <AsyncTimer.h>
+#include <WiFiClientSecureBearSSL.h>
 
 // Constants for EEPROM
 #define EEPROM_SIZE 127
@@ -29,7 +30,7 @@
 #define LOKI_PORT_ADDR 113
 
 // Firmware version and OTA update tracking
-#define FIRMWARE_VERSION "0.1.0"
+#define FIRMWARE_VERSION "0.1.1"
 #define UPDATE_PENDING_ADDR 118   // 1 byte: 0=stable, 1=pending verification
 #define UPDATE_ATTEMPTS_ADDR 119  // 1 byte: consecutive failed update count
 #define MAX_UPDATE_ATTEMPTS 2
@@ -116,15 +117,21 @@ bool checkForUpdates(String &latestTag, String &downloadUrl) {
   const String apiUrl = "https://api.github.com/repos/zenon-celofan/ArduinoWeatherClock/releases/latest";
   
   HTTPClient http;
-  WiFiClientSecure client;
+  BearSSL::WiFiClientSecure client;
   client.setInsecure();
   
-  Serial.println("Checking GitHub for updates...");
+  Serial.print("Query URL: ");
+  Serial.println(apiUrl);
+  Serial.println("Connecting to GitHub...");
+  
   http.begin(client, apiUrl);
   http.addHeader("Accept", "application/vnd.github+json");
   http.addHeader("User-Agent", "ESP8266-Weather-Clock");
   
+  Serial.println("Sending HTTP GET...");
   int httpCode = http.GET();
+  Serial.printf("HTTP response code: %d\n", httpCode);
+  
   if (httpCode != HTTP_CODE_OK) {
     Serial.printf("GitHub API error: %d\n", httpCode);
     loki("GitHub API error: " + String(httpCode));
@@ -132,8 +139,36 @@ bool checkForUpdates(String &latestTag, String &downloadUrl) {
     return false;
   }
   
-  String payload = http.getString();
+  int payloadLen = http.getSize();
+  Serial.printf("Response Content-Length: %d\n", payloadLen);
+  
+  uint8_t buff[128] = { 0 };
+  WiFiClient *stream = http.getStreamPtr();
+  
+  String payload;
+  payload.reserve(payloadLen > 4096 ? 4096 : payloadLen + 64);
+  
+  unsigned long start = millis();
+  while (http.connected() && (payloadLen > 0 || payloadLen == -1)) {
+    if (millis() - start > 15000) {
+      Serial.println("Timeout reading response");
+      break;
+    }
+    size_t avail = stream->available();
+    if (avail) {
+      size_t toRead = (avail > sizeof(buff)) ? sizeof(buff) : avail;
+      size_t read = stream->readBytes(buff, toRead);
+      payload += String((const char*)buff).substring(0, read);
+      if (payloadLen > 0) payloadLen -= read;
+      start = millis();
+      if (payload.length() > 4096) break;
+    }
+    yield();
+  }
   http.end();
+  
+  Serial.printf("Payload received: %d bytes\n", payload.length());
+  Serial.printf("First 500 chars: %s\n", payload.substring(0, 500).c_str());
   
   StaticJsonDocument<1024> doc;
   DeserializationError error = deserializeJson(doc, payload);
