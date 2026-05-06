@@ -501,7 +501,6 @@ void serveConfigPage() {
             </div>
             <div class="update-section">
                 <div>Auto Update:</div>
-                <input type="hidden" name="auto_update" value="0">
                 <div class="checkbox-row">
                     <input type="checkbox" id="auto_update" name="auto_update" value="1" )rawliteral" + (autoUpdate ? "checked" : "") + R"rawliteral(">
                     <label for="auto_update">Enable auto-update on boot</label>
@@ -541,7 +540,7 @@ void handleSaveConfig() {
     String lokiIP3 = server.arg("loki_ip3");
     String lokiIP4 = server.arg("loki_ip4");
     String lokiPort = server.arg("loki_port");
-    bool autoUpdate = (server.arg("auto_update") == "1");
+    bool autoUpdate = server.hasArg("auto_update");
 
     Serial.printf("Form received - auto_update param: '%s', parsed: %s\n",
       server.arg("auto_update").c_str(), autoUpdate ? "true" : "false");
