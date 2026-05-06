@@ -34,6 +34,7 @@
 #define UPDATE_ATTEMPTS_ADDR 119  // 1 byte: consecutive failed update count
 #define MAX_UPDATE_ATTEMPTS 2
 #define AUTO_UPDATE_ADDR 120      // 1 byte: 0=disabled, 1=enabled
+#define LOKI_ENABLED_ADDR 121     // 1 byte: 0=disabled, 1=enabled
 
 #define GITHUB_REPO_URL "https://github.com/zenon-celofan/ArduinoWeatherClock"
 
@@ -243,6 +244,7 @@ void initLokiConfig() {
 
 // Function to send log to Loki server
 void loki(const String &logMessage) {
+  if (!loadLokiEnabled()) return;
   if (WiFi.status() != WL_CONNECTED) {
     Serial.println("WiFi not connected. Cannot send log to Loki.");
     return;
@@ -389,6 +391,15 @@ void saveAutoUpdate(bool enabled) {
   EEPROM.commit();
 }
 
+bool loadLokiEnabled() {
+  return EEPROM.read(LOKI_ENABLED_ADDR) == 1;
+}
+
+void saveLokiEnabled(bool enabled) {
+  EEPROM.write(LOKI_ENABLED_ADDR, enabled ? 1 : 0);
+  EEPROM.commit();
+}
+
 // Load time display duration from EEPROM
 int loadTimeDisplayDuration() {
   int duration = EEPROM.read(TIME_DISPLAY_DURATION_ADDR) << 8;
@@ -433,6 +444,7 @@ void serveConfigPage() {
   String lokiIP4 = readStringFromEEPROM(LOKI_IP4_ADDR, 3);
   String lokiPort = readStringFromEEPROM(LOKI_PORT_ADDR, 5);
   bool autoUpdate = loadAutoUpdate();
+  bool lokiEnabled = loadLokiEnabled();
   Serial.printf("Config page loaded - auto_update from EEPROM: %s (addr %d)\n",
     autoUpdate ? "true" : "false", AUTO_UPDATE_ADDR);
 
@@ -537,6 +549,11 @@ void serveConfigPage() {
                 padding-top: 10px;
                 border-top: 1px solid #ddd;
             }
+            .loki-fields.disabled input {
+                background-color: #e9ecef;
+                color: #6c757d;
+                pointer-events: none;
+            }
         </style>
     </head>
     <body>
@@ -564,13 +581,33 @@ void serveConfigPage() {
             <div class="field-description">Set the duration to display the temperature in seconds.</div>
             <div id="advancedOptions">
                 <div>Advanced Options:</div>
-                <input type="number" class="ip-part" name="loki_ip1" value=")rawliteral" + lokiIP1 + R"rawliteral(" min="0" max="255" required>
-                <input type="number" class="ip-part" name="loki_ip2" value=")rawliteral" + lokiIP2 + R"rawliteral(" min="0" max="255" required>
-                <input type="number" class="ip-part" name="loki_ip3" value=")rawliteral" + lokiIP3 + R"rawliteral(" min="0" max="255" required>
-                <input type="number" class="ip-part" name="loki_ip4" value=")rawliteral" + lokiIP4 + R"rawliteral(" min="0" max="255" required>
-                <div class="field-description">Enter the IP address of the Loki server.</div>
-                <input type="number" name="loki_port" value=")rawliteral" + lokiPort + R"rawliteral(" placeholder="Loki Server Port" required>
-                <div class="field-description">Enter the port for the Loki server.</div>
+                <input type="hidden" name="loki_enabled" value="0">
+                <div class="checkbox-row">
+                    <input type="checkbox" id="loki_enabled" name="loki_enabled" value="1")rawliteral" + (lokiEnabled ? " checked" : "") + R"rawliteral(>
+                    <label for="loki_enabled">Enable Loki logging</label>
+                </div>
+                <div id="lokiFields" class="loki-fields)rawliteral" + (lokiEnabled ? "" : " disabled") + R"rawliteral(">
+                    <input type="number" class="ip-part" name="loki_ip1" value=")rawliteral" + lokiIP1 + R"rawliteral(" min="0" max="255" required )rawliteral" + (lokiEnabled ? "" : "disabled") + R"rawliteral(>
+                    <input type="number" class="ip-part" name="loki_ip2" value=")rawliteral" + lokiIP2 + R"rawliteral(" min="0" max="255" required )rawliteral" + (lokiEnabled ? "" : "disabled") + R"rawliteral(>
+                    <input type="number" class="ip-part" name="loki_ip3" value=")rawliteral" + lokiIP3 + R"rawliteral(" min="0" max="255" required )rawliteral" + (lokiEnabled ? "" : "disabled") + R"rawliteral(>
+                    <input type="number" class="ip-part" name="loki_ip4" value=")rawliteral" + lokiIP4 + R"rawliteral(" min="0" max="255" required )rawliteral" + (lokiEnabled ? "" : "disabled") + R"rawliteral(>
+                    <div class="field-description">Enter the IP address of the Loki server.</div>
+                    <input type="number" name="loki_port" value=")rawliteral" + lokiPort + R"rawliteral(" placeholder="Loki Server Port" required )rawliteral" + (lokiEnabled ? "" : "disabled") + R"rawliteral(>
+                    <div class="field-description">Enter the port for the Loki server.</div>
+                </div>
+                <script>
+                    document.getElementById('loki_enabled').addEventListener('change', function() {
+                        var fields = document.getElementById('lokiFields');
+                        var inputs = fields.querySelectorAll('input');
+                        if (this.checked) {
+                            fields.classList.remove('disabled');
+                            for (var i = 0; i < inputs.length; i++) inputs[i].disabled = false;
+                        } else {
+                            fields.classList.add('disabled');
+                            for (var i = 0; i < inputs.length; i++) inputs[i].disabled = true;
+                        }
+                    });
+                </script>
             </div>
             <div class="update-section">
                 <div>Auto Update:</div>
@@ -615,14 +652,17 @@ void handleSaveConfig() {
     String lokiIP4 = server.arg("loki_ip4");
     String lokiPort = server.arg("loki_port");
     bool autoUpdate = false;
+    bool lokiEnabled = false;
     for (int i = 0; i < server.args(); i++) {
       if (server.argName(i) == "auto_update" && server.arg(i) == "1") {
         autoUpdate = true;
-        break;
+      }
+      if (server.argName(i) == "loki_enabled" && server.arg(i) == "1") {
+        lokiEnabled = true;
       }
     }
 
-    Serial.printf("Form received - auto_update parsed: %s\n", autoUpdate ? "true" : "false");
+    Serial.printf("Form received - auto_update: %s, loki_enabled: %s\n", autoUpdate ? "true" : "false", lokiEnabled ? "true" : "false");
 
     saveWiFiCredentials(ssid, password);
     saveLocationData(latitude, longitude);
@@ -631,13 +671,15 @@ void handleSaveConfig() {
     saveTimeDisplayDuration(timeDisplayDuration);
     saveTempDisplayDuration(tempDisplayDuration);
     saveAutoUpdate(autoUpdate);
-    
-    // Save Loki server configuration
-    writeStringToEEPROM(LOKI_IP1_ADDR, lokiIP1, 3);
-    writeStringToEEPROM(LOKI_IP2_ADDR, lokiIP2, 3);
-    writeStringToEEPROM(LOKI_IP3_ADDR, lokiIP3, 3);
-    writeStringToEEPROM(LOKI_IP4_ADDR, lokiIP4, 3);
-    writeStringToEEPROM(LOKI_PORT_ADDR, lokiPort, 5);
+    saveLokiEnabled(lokiEnabled);
+
+    if (lokiEnabled) {
+      writeStringToEEPROM(LOKI_IP1_ADDR, lokiIP1, 3);
+      writeStringToEEPROM(LOKI_IP2_ADDR, lokiIP2, 3);
+      writeStringToEEPROM(LOKI_IP3_ADDR, lokiIP3, 3);
+      writeStringToEEPROM(LOKI_IP4_ADDR, lokiIP4, 3);
+      writeStringToEEPROM(LOKI_PORT_ADDR, lokiPort, 5);
+    }
     EEPROM.commit();
 
     server.send(200, "text/html", "<h1>Configuration Saved!</h1><p>Rebooting...</p>");
