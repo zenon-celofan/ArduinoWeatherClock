@@ -114,68 +114,73 @@ int semverCompare(const String &v1, const String &v2) {
 
 // Check GitHub for latest release
 bool checkForUpdates(String &latestTag, String &downloadUrl) {
-  const String versionUrl = "https://raw.githubusercontent.com/zenon-celofan/ArduinoWeatherClock/main/latest_version.txt";
-  const String releasesUrl = "https://api.github.com/repos/zenon-celofan/ArduinoWeatherClock/releases/latest";
-  
-  HTTPClient http;
   BearSSL::WiFiClientSecure client;
   client.setInsecure();
-  client.setBufferSizes(4096, 4096);
+  client.setBufferSizes(512, 512);
   
-  Serial.print("Checking version at: ");
-  Serial.println(versionUrl);
+  const char* host = "api.github.com";
+  String request = "GET /repos/zenon-celofan/ArduinoWeatherClock/releases/latest HTTP/1.1\r\n"
+                   "Host: api.github.com\r\n"
+                   "User-Agent: ESP8266-Weather-Clock\r\n"
+                   "Accept: application/vnd.github+json\r\n"
+                   "Connection: close\r\n\r\n";
   
-  http.begin(client, versionUrl);
-  http.setTimeout(10000);
-  
-  int httpCode = http.GET();
-  Serial.printf("Version check HTTP code: %d\n", httpCode);
-  
-  if (httpCode != HTTP_CODE_OK) {
-    Serial.printf("Version check failed: %d\n", httpCode);
-    loki("GitHub version check failed: " + String(httpCode));
-    http.end();
+  Serial.println("Connecting to GitHub API...");
+  if (!client.connect(host, 443)) {
+    Serial.println("Connection to GitHub failed");
     return false;
   }
   
-  latestTag = http.getString();
-  latestTag.trim();
-  http.end();
+  client.print(request);
+  Serial.println("Request sent, waiting for response...");
   
+  unsigned long timeout = millis();
+  while (!client.available() && millis() - timeout < 10000) {
+    delay(10);
+  }
+  
+  if (!client.available()) {
+    Serial.println("Timeout waiting for response");
+    client.stop();
+    return false;
+  }
+  
+  while (client.available()) {
+    String line = client.readStringUntil('\n');
+    if (line == "\r" || line.length() == 0) break;
+  }
+  
+  String body;
+  while (client.available()) {
+    body += client.readStringUntil('\n');
+    body += "\n";
+    yield();
+  }
+  client.stop();
+  
+  Serial.printf("Response body length: %d\n", body.length());
+  Serial.printf("First 300 chars: %s\n", body.substring(0, 300).c_str());
+  
+  StaticJsonDocument<1024> doc;
+  DeserializationError error = deserializeJson(doc, body);
+  if (error) {
+    Serial.printf("JSON parse error: %s\n", error.f_str());
+    return false;
+  }
+  
+  latestTag = doc["tag_name"].as<String>();
   if (latestTag.length() == 0) {
-    Serial.println("Empty version string from GitHub");
+    Serial.println("No release tag found");
     return false;
   }
   
-  Serial.printf("Remote version: %s, Local version: %s\n", latestTag.c_str(), FIRMWARE_VERSION);
+  if (doc["assets"].size() > 0) {
+    downloadUrl = doc["assets"][0]["browser_download_url"].as<String>();
+  }
   
   int cmp = semverCompare(latestTag, FIRMWARE_VERSION);
-  Serial.printf("Update available: %s\n", cmp > 0 ? "YES" : "NO");
-  
-  if (cmp > 0) {
-    client.setInsecure();
-    client.setBufferSizes(4096, 4096);
-    
-    http.begin(client, releasesUrl);
-    http.setTimeout(10000);
-    http.addHeader("Accept", "application/vnd.github+json");
-    http.addHeader("User-Agent", "ESP8266-Weather-Clock");
-    
-    httpCode = http.GET();
-    Serial.printf("Releases API HTTP code: %d\n", httpCode);
-    
-    if (httpCode == HTTP_CODE_OK) {
-      StaticJsonDocument<1024> doc;
-      DeserializationError error = deserializeJson(doc, http.getString());
-      if (!error && doc["assets"].size() > 0) {
-        downloadUrl = doc["assets"][0]["browser_download_url"].as<String>();
-        Serial.printf("Download URL: %s\n", downloadUrl.c_str());
-      } else {
-        Serial.println("Failed to parse releases JSON");
-      }
-    }
-    http.end();
-  }
+  Serial.printf("Current: %s, Latest: %s, Update available: %s\n",
+    FIRMWARE_VERSION, latestTag.c_str(), cmp > 0 ? "YES" : "NO");
   
   return cmp > 0;
 }
