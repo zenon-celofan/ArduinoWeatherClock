@@ -30,7 +30,7 @@
 #define LOKI_PORT_ADDR 113
 
 // Firmware version and OTA update tracking
-#define FIRMWARE_VERSION "0.1.1"
+#define FIRMWARE_VERSION "0.1.2"
 #define UPDATE_PENDING_ADDR 118   // 1 byte: 0=stable, 1=pending verification
 #define UPDATE_ATTEMPTS_ADDR 119  // 1 byte: consecutive failed update count
 #define MAX_UPDATE_ATTEMPTS 2
@@ -190,10 +190,14 @@ bool performOTAUpdate(const String &url) {
   Serial.printf("Starting OTA update from: %s\n", url.c_str());
   loki("OTA update starting from: " + url);
 
-  WiFiClient client;
-  ESPhttpUpdate.rebootOnUpdate(false);
+  BearSSL::WiFiClientSecure client;
+  client.setInsecure();
+  client.setBufferSizes(4096, 4096);
 
-  t_httpUpdate_return ret = ESPhttpUpdate.update(client, url);
+  ESPhttpUpdate.rebootOnUpdate(false);
+  ESPhttpUpdate.setLedPin(LED_BUILTIN, LOW);
+
+  t_httpUpdate_return ret = ESPhttpUpdate.update(client, url, FIRMWARE_VERSION);
 
   switch (ret) {
     case HTTP_UPDATE_FAILED:
