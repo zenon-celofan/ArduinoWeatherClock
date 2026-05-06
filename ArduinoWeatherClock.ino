@@ -138,7 +138,8 @@ bool checkForUpdates(String &latestTag, String &downloadUrl) {
     return false;
   }
   
-  latestTag = http.getString().trim();
+  latestTag = http.getString();
+  latestTag.trim();
   http.end();
   
   if (latestTag.length() == 0) {
