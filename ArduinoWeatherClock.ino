@@ -185,34 +185,80 @@ bool checkForUpdates(String &latestTag, String &downloadUrl) {
   return cmp > 0;
 }
 
-// Perform OTA update using ESPhttpUpdate
+// Perform OTA update by downloading firmware and flashing manually
 bool performOTAUpdate(const String &url) {
   Serial.printf("Starting OTA update from: %s\n", url.c_str());
   loki("OTA update starting from: " + url);
 
   BearSSL::WiFiClientSecure client;
   client.setInsecure();
-  client.setBufferSizes(4096, 4096);
 
-  ESPhttpUpdate.rebootOnUpdate(false);
-  ESPhttpUpdate.setLedPin(LED_BUILTIN, LOW);
+  HTTPClient http;
+  http.begin(client, url);
+  http.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
+  http.setTimeout(120000);
 
-  t_httpUpdate_return ret = ESPhttpUpdate.update(client, url, FIRMWARE_VERSION);
+  int httpCode = http.GET();
+  Serial.printf("Download HTTP code: %d\n", httpCode);
 
-  switch (ret) {
-    case HTTP_UPDATE_FAILED:
-      Serial.printf("HTTP_UPDATE_FAILED: Error(%d): %s\n",
-        ESPhttpUpdate.getLastError(), ESPhttpUpdate.getLastErrorString().c_str());
-      loki("OTA update failed: " + ESPhttpUpdate.getLastErrorString());
-      return false;
-    case HTTP_UPDATE_NO_UPDATES:
-      Serial.println("HTTP_UPDATE_NO_UPDATES");
-      return false;
-    case HTTP_UPDATE_OK:
-      Serial.println("HTTP_UPDATE_OK - rebooting");
-      loki("OTA update successful, rebooting");
-      return true;
+  if (httpCode != HTTP_CODE_OK) {
+    Serial.printf("Download failed: %d\n", httpCode);
+    http.end();
+    return false;
   }
+
+  int contentLength = http.getSize();
+  Serial.printf("Firmware size: %d bytes\n", contentLength);
+
+  if (contentLength <= 0) {
+    Serial.println("Invalid content length");
+    http.end();
+    return false;
+  }
+
+  WiFiClient *stream = http.getStreamPtr();
+
+  if (!Update.begin(contentLength, U_FLASH)) {
+    Serial.printf("Update.begin failed: %s\n", Update.errorString());
+    http.end();
+    return false;
+  }
+
+  Serial.println("Flashing firmware...");
+  uint8_t buff[1024] = { 0 };
+  size_t totalWritten = 0;
+
+  unsigned long start = millis();
+  while (http.connected() && totalWritten < (size_t)contentLength) {
+    if (millis() - start > 60000) {
+      Serial.println("Download timeout");
+      break;
+    }
+    size_t avail = stream->available();
+    if (avail) {
+      size_t toRead = (avail > sizeof(buff)) ? sizeof(buff) : avail;
+      size_t read = stream->readBytes(buff, toRead);
+      Update.write(buff, read);
+      totalWritten += read;
+      start = millis();
+      if (totalWritten % 50000 < read) {
+        Serial.printf("  Progress: %d/%d bytes\n", totalWritten, contentLength);
+      }
+    }
+    yield();
+  }
+  http.end();
+
+  if (Update.end(true)) {
+    Serial.printf("Flash complete: %d bytes written\n", totalWritten);
+    loki("OTA update successful, rebooting");
+    return true;
+  } else {
+    Serial.printf("Flash failed: %s\n", Update.errorString());
+    loki("OTA flash failed: " + String(Update.errorString()));
+    return false;
+  }
+}
   return false;
 }
 
