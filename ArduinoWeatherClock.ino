@@ -30,7 +30,7 @@
 #define LOKI_PORT_ADDR 113
 
 // Firmware version and OTA update tracking
-#define FIRMWARE_VERSION "0.1.9"
+#define FIRMWARE_VERSION "0.1.10"
 #define UPDATE_PENDING_ADDR 118   // 1 byte: 0=stable, 1=pending verification
 #define UPDATE_ATTEMPTS_ADDR 119  // 1 byte: consecutive failed update count
 #define MAX_UPDATE_ATTEMPTS 2
@@ -973,23 +973,6 @@ void refreshDisplay() {
   matrixDisplay.setIntensity(brightness);
   matrixDisplay.print(displayStr);
 }
-  } else {
-    int temp = round(localtemp);
-    matrixDisplay.setTextAlignment(PA_CENTER);
-    snprintf(displayStr, sizeof(displayStr), temp > 0 ? "+%d" : "%d", temp);
-    if (wifiStale) {
-      matrixDisplay.setFont(BigFontNew);
-      matrixDisplay.setIntensity(brightness);
-      matrixDisplay.print(displayStr);
-      matrixDisplay.setTextAlignment(PA_LEFT);
-      matrixDisplay.print("E");
-      return;
-    }
-  }
-  matrixDisplay.setFont(BigFontNew);
-  matrixDisplay.setIntensity(brightness);
-  matrixDisplay.print(displayStr);
-}
 
 // Display time
 void displayTime() {
@@ -1155,6 +1138,23 @@ void loop() {
     configTime(gmtOffsetSec, daylightOffsetSec, ntpServer1, ntpServer2);
     ntpSyncEnabled = true;
   }
+
+  if (WiFi.getMode() != WIFI_AP) {
+    if (WiFi.status() != WL_CONNECTED) {
+      if (wifiDisconnectedSince == 0) {
+        wifiDisconnectedSince = millis();
+        Serial.println("WiFi lost");
+      }
+    } else {
+      if (wifiDisconnectedSince > 0) {
+        Serial.printf("WiFi reconnected after %lus\n", (millis() - wifiDisconnectedSince) / 1000);
+        wifiDisconnectedSince = 0;
+        lastWifiConnectedAt = millis();
+        updateLocalTemperatureAndTimezone();
+      }
+    }
+  }
+
   t.handle();
 }
  
