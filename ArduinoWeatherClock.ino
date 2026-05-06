@@ -933,7 +933,7 @@ void setup() {
 
         matrixDisplay.setTextAlignment(PA_CENTER);
         matrixDisplay.setFont(BigFontNew);
-        matrixDisplay.print("UPD");
+        matrixDisplay.print("+");
 
         if (performOTAUpdate(downloadUrl)) {
           ESP.restart();
@@ -944,6 +944,10 @@ void setup() {
         }
       } else {
         Serial.println("No updates available");
+        matrixDisplay.setTextAlignment(PA_CENTER);
+        matrixDisplay.setFont(BigFontNew);
+        matrixDisplay.print("-");
+        delay(1000);
       }
     }
   } else {
