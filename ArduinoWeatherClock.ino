@@ -30,7 +30,7 @@
 #define LOKI_PORT_ADDR 113
 
 // Firmware version and OTA update tracking
-#define FIRMWARE_VERSION "0.1.10"
+#define FIRMWARE_VERSION "0.1.11"
 #define UPDATE_PENDING_ADDR 118   // 1 byte: 0=stable, 1=pending verification
 #define UPDATE_ATTEMPTS_ADDR 119  // 1 byte: consecutive failed update count
 #define MAX_UPDATE_ATTEMPTS 2
@@ -84,6 +84,7 @@ bool showTime = true; // Variable to toggle between time and temperature
 // Global variables for Loki configuration
 String lokiIP;
 String lokiURL;
+String deviceName;
 
 // OTA update variables
 String latestVersion = "";
@@ -92,7 +93,7 @@ String updateUrl = "";
 // Forward declarations
 bool connectToWiFi(const String &ssid, const String &password);
 void displayTemperature();
-void loki(const String &logMessage);
+void loki(const String &category, const String &logMessage);
 int semverCompare(const String &v1, const String &v2);
 bool checkForUpdates(String &latestTag, String &downloadUrl);
 bool performOTAUpdate(const String &url);
@@ -199,7 +200,7 @@ bool checkForUpdates(String &latestTag, String &downloadUrl) {
 // Perform OTA update by downloading firmware and flashing manually
 bool performOTAUpdate(const String &url) {
   Serial.printf("Starting OTA update from: %s\n", url.c_str());
-  loki("OTA update starting from: " + url);
+  loki("ota", "OTA update starting from: " + url);
 
   BearSSL::WiFiClientSecure client;
   client.setInsecure();
@@ -262,11 +263,11 @@ bool performOTAUpdate(const String &url) {
 
   if (Update.end(true)) {
     Serial.printf("Flash complete: %d bytes written\n", totalWritten);
-    loki("OTA update successful, rebooting");
+    loki("ota", "OTA update successful, rebooting");
     return true;
   } else {
     Serial.printf("Flash failed: %s\n", Update.getErrorString());
-    loki("OTA flash failed: " + String(Update.getErrorString()));
+    loki("ota", "OTA flash failed: " + String(Update.getErrorString()));
     return false;
   }
 }
@@ -278,11 +279,11 @@ void handleUpdateBootCheck() {
 
   if (pending == 1) {
     Serial.printf("Update pending detected (attempts: %d)\n", attempts);
-    loki("Update pending detected, attempt " + String(attempts + 1));
+    loki("ota", "Update pending detected, attempt " + String(attempts + 1));
 
     if (attempts >= MAX_UPDATE_ATTEMPTS) {
       Serial.println("Max update attempts reached, disabling auto-update");
-      loki("Max update attempts reached, disabling auto-update");
+      loki("ota", "Max update attempts reached, disabling auto-update");
       EEPROM.write(AUTO_UPDATE_ADDR, 0);
       EEPROM.write(UPDATE_PENDING_ADDR, 0);
       EEPROM.write(UPDATE_ATTEMPTS_ADDR, 0);
@@ -304,7 +305,7 @@ void handleUpdateBootCheck() {
     }
 
     Serial.println("Sanity timer passed - marking update as verified");
-    loki("Update verified after sanity timer");
+    loki("ota", "Update verified after sanity timer");
     EEPROM.write(UPDATE_PENDING_ADDR, 0);
     EEPROM.write(UPDATE_ATTEMPTS_ADDR, 0);
     EEPROM.commit();
@@ -327,14 +328,12 @@ void initLokiConfig() {
 }
 
 // Function to send log to Loki server
-void loki(const String &logMessage) {
+void loki(const String &category, const String &logMessage) {
   if (!loadLokiEnabled()) return;
   if (WiFi.status() != WL_CONNECTED) {
-    Serial.println("WiFi not connected. Cannot send log to Loki.");
     return;
   }
   if (lokiURL.length() == 0) {
-    Serial.println("Loki URL not configured.");
     return;
   }
 
@@ -349,25 +348,21 @@ void loki(const String &logMessage) {
       (unsigned long long)(tv.tv_usec) * 1000ULL;
 
   StaticJsonDocument<512> jsonDoc;
-  jsonDoc["streams"][0]["stream"]["job"] = "current_job";
+  jsonDoc["streams"][0]["stream"]["device"] = deviceName;
   jsonDoc["streams"][0]["stream"]["level"] = "info";
+  jsonDoc["streams"][0]["stream"]["category"] = category;
   jsonDoc["streams"][0]["values"][0][0] = String(epochNanoseconds);
   jsonDoc["streams"][0]["values"][0][1] = logMessage;
 
   String jsonPayload;
   serializeJson(jsonDoc, jsonPayload);
 
-  Serial.printf("Loki URL: %s\n", lokiURL.c_str());
-  Serial.printf("Loki payload: %s\n", jsonPayload.c_str());
-
   http.begin(client, lokiURL);
   http.addHeader("Content-Type", "application/json");
 
   int httpResponseCode = http.POST(jsonPayload);
   if (httpResponseCode > 0) {
-    String response = http.getString();
     Serial.println("Log sent to Loki: " + logMessage);
-    Serial.println("Response: " + response);
   } else {
     Serial.println("Failed to send log to Loki. HTTP response code: " + String(httpResponseCode));
     if (httpResponseCode < 0) {
@@ -381,10 +376,12 @@ void reconnectWifi() {
   if (WiFi.status() != WL_CONNECTED) {
     if (wifiDisconnectedSince == 0) wifiDisconnectedSince = millis();
     Serial.println("Wi-Fi disconnected. Attempting to reconnect...");
+    loki("wifi", "Attempting WiFi reconnection");
     connectToWiFi(ssid, password);
   } else {
     if (wifiDisconnectedSince > 0) {
       Serial.printf("Wi-Fi reconnected after %lu seconds\n", (millis() - wifiDisconnectedSince) / 1000);
+      loki("wifi", "WiFi reconnected after " + String((millis() - wifiDisconnectedSince) / 1000) + "s");
     }
     lastWifiConnectedAt = millis();
     wifiDisconnectedSince = 0;
@@ -771,6 +768,7 @@ void handleSaveConfig() {
     EEPROM.commit();
 
     server.send(200, "text/html", "<h1>Configuration Saved!</h1><p>Rebooting...</p>");
+    loki("config", "Configuration saved, rebooting");
     Serial.println("Rebooting now...");
     Serial.flush();
     delay(500);
@@ -783,6 +781,7 @@ void handleSaveConfig() {
 // Serve metrics for Prometheus
 void serveMetrics() {
   getLocalTime(&timeinfo);
+  loki("metrics", "/metrics endpoint scraped");
   String metrics = 
     "# HELP uptime_seconds The number of seconds the system has been running.\n"
     "# TYPE uptime_seconds counter\n"
@@ -849,12 +848,14 @@ bool connectToWiFi(const String &ssid, const String &password) {
       lastWifiConnectedAt = millis();
       wifiWasEverConnected = true;
       wifiDisconnectedSince = 0;
+      loki("wifi", "Connected to WiFi, IP: " + WiFi.localIP().toString());
       return true;
     }
     delay(500);
     Serial.print(".");
   }
   Serial.println("\nFailed to connect.");
+  loki("wifi", "Failed to connect to WiFi");
   if (wifiDisconnectedSince == 0) wifiDisconnectedSince = millis();
   return false;
 }
@@ -867,19 +868,19 @@ bool fetchTemperatureAndTimezone(const String &latitude, const String &longitude
     String url = "http://api.open-meteo.com/v1/forecast?latitude=" + latitude + "&longitude=" + longitude + "&current_weather=true&timezone=auto";
     Serial.print("Request URL: ");
     Serial.println(url);
-    loki("Request: " + url);
+    loki("weatherserver", "Request: " + url);
     http.begin(client, url);
     Serial.println("http.begin - ok");
     int httpCode = http.GET();
     Serial.println("GET - ok");
     Serial.print("Http response code: ");
     Serial.println(httpCode);
-    loki("HTTP response code: " + String(httpCode));
+    loki("weatherserver", "HTTP response code: " + String(httpCode));
     if (httpCode > 0) {
       String payload = http.getString();
       Serial.print("Response: ");
       Serial.println(payload);
-      loki("Response: " + payload);
+      loki("weatherserver", "Response: " + payload);
       
       // Parse JSON response
       StaticJsonDocument<1024> doc;
@@ -899,7 +900,7 @@ bool fetchTemperatureAndTimezone(const String &latitude, const String &longitude
     } else {
       Serial.print("HTTP error: ");
       Serial.println(httpCode);
-      loki("HTTP error: " + String(httpCode));
+      loki("weatherserver", "HTTP error: " + String(httpCode));
     }
     http.end();
   }
@@ -909,7 +910,7 @@ bool fetchTemperatureAndTimezone(const String &latitude, const String &longitude
 
 // Update local temperature and timezone from the internet
 void updateLocalTemperatureAndTimezone() {
-  if (apMode) return; // Do not update if in AP mode
+  if (apMode) return;
   String latitude, longitude;
   loadLocationData(latitude, longitude);
   if (fetchTemperatureAndTimezone(latitude, longitude, localtemp, gmtOffsetSec, daylightOffsetSec)) {
@@ -919,10 +920,17 @@ void updateLocalTemperatureAndTimezone() {
     Serial.println(gmtOffsetSec);
     Serial.print("Daylight Saving Offset: ");
     Serial.println(daylightOffsetSec);
+    loki("weatherserver", "Temperature fetched: " + String(localtemp) + "C");
     configTime(gmtOffsetSec, daylightOffsetSec, ntpServer1, ntpServer2);
+    delay(100);
+    if (getLocalTime(&timeinfo)) {
+      char timeStr[30];
+      strftime(timeStr, sizeof(timeStr), "%Y-%m-%d %H:%M:%S", &timeinfo);
+      loki("weatherserver", "NTP sync result: " + String(timeStr));
+    }
   } else {
     Serial.println("Failed to fetch temperature and timezone.");
-    loki("Failed to fetch temperature and timezone.");
+    loki("weatherserver", "Failed to fetch temperature and timezone.");
   }
 }
 
@@ -964,10 +972,12 @@ void refreshDisplay() {
     getLocalTime(&timeinfo);
     matrixDisplay.setTextAlignment(PA_RIGHT);
     snprintf(displayStr, sizeof(displayStr), "%d%02d", timeinfo.tm_hour, timeinfo.tm_min);
+    loki("display", displayStr);
   } else {
     int temp = round(localtemp);
     matrixDisplay.setTextAlignment(PA_CENTER);
     snprintf(displayStr, sizeof(displayStr), temp > 0 ? "+%d" : "%d", temp);
+    loki("display", displayStr);
   }
   matrixDisplay.setFont(BigFontNew);
   matrixDisplay.setIntensity(brightness);
@@ -978,14 +988,14 @@ void refreshDisplay() {
 void displayTime() {
   showTime = true;
   refreshDisplay();
-  t.setTimeout(displayTemperature, timeDisplayDuration * 1000); // timeDisplayTicker
+  t.setTimeout(displayTemperature, timeDisplayDuration * 1000);
 }
 
 // Display temperature
 void displayTemperature() {
   showTime = false;
   refreshDisplay();
-  t.setTimeout(displayTime, tempDisplayDuration * 1000);  // tempDisplayTicker
+  t.setTimeout(displayTime, tempDisplayDuration * 1000);
 }
 
 // Display IP address in parts
@@ -1004,7 +1014,8 @@ void displayIPAddress() {
 }
 
 void printFreeHeapSize() {
-  Serial.println("Free memory: " + String(system_get_free_heap_size()) + " bytes");
+  Serial.println("Uptime: " + String(uptime_seconds) + "s, Free memory: " + String(system_get_free_heap_size()) + " bytes");
+  loki("heartbeat", "Uptime: " + String(uptime_seconds) + "s, Free memory: " + String(system_get_free_heap_size()) + " bytes");
 }
 
 
@@ -1021,6 +1032,8 @@ void setup() {
   String macAddress = WiFi.macAddress();
   Serial.print("MAC Address: ");
   Serial.println(macAddress);
+  deviceName = "device-" + macAddress.substring(macAddress.length() - 5);
+  deviceName.replace(":", "");
 
   // Initialize LED Matrix display
   matrixDisplay.begin();
@@ -1048,7 +1061,7 @@ void setup() {
       String latestTag, downloadUrl;
       if (checkForUpdates(latestTag, downloadUrl)) {
         Serial.printf("Update available: %s\n", latestTag.c_str());
-        loki("Update available: " + latestTag);
+        loki("ota", "Update available: " + latestTag);
         EEPROM.write(UPDATE_PENDING_ADDR, 1);
         EEPROM.commit();
 
@@ -1125,7 +1138,7 @@ void setup() {
 
   t.setInterval(printFreeHeapSize, 60 * 1000);
 
-  loki("setup() completed.");
+  loki("system", "setup() completed.");
 }
 
 
@@ -1137,6 +1150,12 @@ void loop() {
     Serial.println("Re-enabling NTP synchronization...");
     configTime(gmtOffsetSec, daylightOffsetSec, ntpServer1, ntpServer2);
     ntpSyncEnabled = true;
+    delay(100);
+    if (getLocalTime(&timeinfo)) {
+      char timeStr[30];
+      strftime(timeStr, sizeof(timeStr), "%Y-%m-%d %H:%M:%S", &timeinfo);
+      loki("ntp", "NTP sync result: " + String(timeStr));
+    }
   }
 
   if (WiFi.getMode() != WIFI_AP) {
@@ -1144,10 +1163,12 @@ void loop() {
       if (wifiDisconnectedSince == 0) {
         wifiDisconnectedSince = millis();
         Serial.println("WiFi lost");
+        loki("wifi", "WiFi connection lost");
       }
     } else {
       if (wifiDisconnectedSince > 0) {
         Serial.printf("WiFi reconnected after %lus\n", (millis() - wifiDisconnectedSince) / 1000);
+        loki("wifi", "WiFi reconnected after " + String((millis() - wifiDisconnectedSince) / 1000) + "s");
         wifiDisconnectedSince = 0;
         lastWifiConnectedAt = millis();
         updateLocalTemperatureAndTimezone();
