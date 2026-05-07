@@ -30,7 +30,7 @@
 #define LOKI_PORT_ADDR 113
 
 // Firmware version and OTA update tracking
-#define FIRMWARE_VERSION "0.1.12"
+#define FIRMWARE_VERSION "0.1.13"
 #define UPDATE_PENDING_ADDR 118   // 1 byte: 0=stable, 1=pending verification
 #define UPDATE_ATTEMPTS_ADDR 119  // 1 byte: consecutive failed update count
 #define MAX_UPDATE_ATTEMPTS 2
@@ -264,7 +264,7 @@ bool performOTAUpdate(const String &url) {
 
   if (Update.end(true)) {
     Serial.printf("Flash complete: %d bytes written\n", totalWritten);
-    loki("ota", "OTA update successful, rebooting");
+    loki("ota", "Flash complete: " + String(totalWritten) + " bytes, rebooting");
     return true;
   } else {
     Serial.printf("Flash failed: %s\n", Update.getErrorString());
@@ -295,8 +295,9 @@ void handleUpdateBootCheck() {
     EEPROM.write(UPDATE_ATTEMPTS_ADDR, attempts + 1);
     EEPROM.commit();
 
-    Serial.printf("Waiting 10s sanity timer (attempt %d/%d)...\n",
+    Serial.printf("Starting 10s sanity timer (attempt %d/%d)...\n",
       attempts + 1, MAX_UPDATE_ATTEMPTS);
+    loki("ota", "Sanity timer started");
 
     unsigned long start = millis();
     while (millis() - start < 10000) {
@@ -306,7 +307,7 @@ void handleUpdateBootCheck() {
     }
 
     Serial.println("Sanity timer passed - marking update as verified");
-    loki("ota", "Update verified after sanity timer");
+    loki("ota", "Sanity timer passed, update verified");
     EEPROM.write(UPDATE_PENDING_ADDR, 0);
     EEPROM.write(UPDATE_ATTEMPTS_ADDR, 0);
     EEPROM.commit();
@@ -849,7 +850,7 @@ bool connectToWiFi(const String &ssid, const String &password) {
       lastWifiConnectedAt = millis();
       wifiWasEverConnected = true;
       wifiDisconnectedSince = 0;
-      loki("wifi", "Connected to WiFi, IP: " + WiFi.localIP().toString());
+      loki("wifi", "Connected, IP: " + WiFi.localIP().toString() + ", Firmware: " + FIRMWARE_VERSION);
       return true;
     }
     delay(500);
@@ -1078,6 +1079,8 @@ void setup() {
         matrixDisplay.setFont(BigFontNew);
         matrixDisplay.print("+");
 
+        Serial.println("Starting OTA flashing...");
+        loki("ota", "Flashing started for version: " + latestTag);
         if (performOTAUpdate(downloadUrl)) {
           ESP.restart();
         } else {
@@ -1086,7 +1089,8 @@ void setup() {
           delay(2000);
         }
       } else {
-        Serial.println("No updates available");
+        Serial.println("No updates available, current version: " + String(FIRMWARE_VERSION));
+        loki("ota", "No updates available, current: " + FIRMWARE_VERSION);
         matrixDisplay.setTextAlignment(PA_CENTER);
         matrixDisplay.setFont(BigFontNew);
         matrixDisplay.print("-");
