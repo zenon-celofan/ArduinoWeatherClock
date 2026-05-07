@@ -30,7 +30,7 @@
 #define LOKI_PORT_ADDR 113
 
 // Firmware version and OTA update tracking
-#define FIRMWARE_VERSION "0.1.21"
+#define FIRMWARE_VERSION "0.1.22"
 #define UPDATE_PENDING_ADDR 118   // 1 byte: 0=stable, 1=pending verification
 #define UPDATE_ATTEMPTS_ADDR 119  // 1 byte: consecutive failed update count
 #define MAX_UPDATE_ATTEMPTS 2
@@ -922,9 +922,12 @@ void updateLocalTemperatureAndTimezone() {
     configTime(gmtOffsetSec, daylightOffsetSec, ntpServer1, ntpServer2);
     delay(100);
     if (getLocalTime(&timeinfo)) {
-      char timeStr[30];
-      strftime(timeStr, sizeof(timeStr), "%Y-%m-%d %H:%M:%S", &timeinfo);
-      loki("weatherserver", "NTP sync result: " + String(timeStr));
+      if (!ntpSyncEnabled) {
+        ntpSyncEnabled = true;
+        char timeStr[30];
+        strftime(timeStr, sizeof(timeStr), "%Y-%m-%d %H:%M:%S", &timeinfo);
+        loki("system", "NTP: " + String(timeStr) + " | Firmware: " + String(FIRMWARE_VERSION) + " | WiFi: " + ssid + ", IP: " + WiFi.localIP().toString() + ", MAC: " + WiFi.macAddress());
+      }
     }
   } else {
     Serial.println("Failed to fetch temperature and timezone.");
@@ -1057,7 +1060,6 @@ void setup() {
   String password;
   if (loadWiFiCredentials(ssid, password) && connectToWiFi(ssid, password)) {
     Serial.println("WiFi connected using stored credentials.");
-    ntpSyncEnabled = true;
     displayIPAddress(); // Display IP address in parts
 
     handleUpdateBootCheck();
@@ -1150,17 +1152,6 @@ void setup() {
 void loop() {
   server.handleClient();
   matrixDisplay.displayAnimate();
-
-  if (WiFi.getMode() != WIFI_AP && WiFi.status() == WL_CONNECTED && !ntpSyncEnabled) {
-    Serial.println("Re-enabling NTP synchronization...");
-    configTime(gmtOffsetSec, daylightOffsetSec, ntpServer1, ntpServer2);
-    if (getLocalTime(&timeinfo)) {
-      ntpSyncEnabled = true;
-      char timeStr[30];
-      strftime(timeStr, sizeof(timeStr), "%Y-%m-%d %H:%M:%S", &timeinfo);
-      loki("system", "NTP: " + String(timeStr) + " | Firmware: " + String(FIRMWARE_VERSION) + " | WiFi: " + ssid + ", IP: " + WiFi.localIP().toString() + ", MAC: " + WiFi.macAddress());
-    }
-  }
 
   if (WiFi.getMode() != WIFI_AP) {
     if (WiFi.status() != WL_CONNECTED) {
