@@ -30,7 +30,7 @@
 #define LOKI_PORT_ADDR 113
 
 // Firmware version and OTA update tracking
-#define FIRMWARE_VERSION "0.1.18"
+#define FIRMWARE_VERSION "0.1.19"
 #define UPDATE_PENDING_ADDR 118   // 1 byte: 0=stable, 1=pending verification
 #define UPDATE_ATTEMPTS_ADDR 119  // 1 byte: consecutive failed update count
 #define MAX_UPDATE_ATTEMPTS 2
@@ -332,15 +332,15 @@ void loki(const String &category, const String &logMessage) {
     return;
   }
 
-  HTTPClient http;
-  WiFiClient client;
-
   struct timeval tv;
   gettimeofday(&tv, NULL);
 
   if (tv.tv_sec < 1735689600) {
     return;
   }
+
+  HTTPClient http;
+  WiFiClient client;
 
   unsigned long long epochNanoseconds =
       (unsigned long long)(tv.tv_sec) * 1000000000ULL +
@@ -1159,12 +1159,8 @@ void loop() {
       char timeStr[30];
       strftime(timeStr, sizeof(timeStr), "%Y-%m-%d %H:%M:%S", &timeinfo);
       loki("ntp", "NTP sync result: " + String(timeStr));
-      delay(250);
-      loki("system", "Firmware version: " + String(FIRMWARE_VERSION));
-      delay(250);
-      loki("wifi", "Connected to: " + ssid + ", IP: " + WiFi.localIP().toString());
-      delay(250);
-      loki("wifi", "MAC: " + WiFi.macAddress());
+      delay(500);
+      loki("system", "Firmware: " + String(FIRMWARE_VERSION) + ", WiFi: " + ssid + ", IP: " + WiFi.localIP().toString() + ", MAC: " + WiFi.macAddress());
     }
   }
 
