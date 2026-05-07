@@ -1090,7 +1090,7 @@ void setup() {
         }
       } else {
         Serial.println("No updates available, current version: " + String(FIRMWARE_VERSION));
-        loki("ota", "No updates available, current: " + FIRMWARE_VERSION);
+        loki("ota", "No updates available, current: " + String(FIRMWARE_VERSION));
         matrixDisplay.setTextAlignment(PA_CENTER);
         matrixDisplay.setFont(BigFontNew);
         matrixDisplay.print("-");
