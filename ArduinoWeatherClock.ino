@@ -30,7 +30,7 @@
 #define LOKI_PORT_ADDR 113
 
 // Firmware version and OTA update tracking
-#define FIRMWARE_VERSION "0.1.19"
+#define FIRMWARE_VERSION "0.1.20"
 #define UPDATE_PENDING_ADDR 118   // 1 byte: 0=stable, 1=pending verification
 #define UPDATE_ATTEMPTS_ADDR 119  // 1 byte: consecutive failed update count
 #define MAX_UPDATE_ATTEMPTS 2
@@ -346,7 +346,7 @@ void loki(const String &category, const String &logMessage) {
       (unsigned long long)(tv.tv_sec) * 1000000000ULL +
       (unsigned long long)(tv.tv_usec) * 1000ULL;
 
-  StaticJsonDocument<512> jsonDoc;
+  StaticJsonDocument<768> jsonDoc;
   jsonDoc["streams"][0]["stream"]["device"] = deviceName;
   jsonDoc["streams"][0]["stream"]["level"] = "info";
   jsonDoc["streams"][0]["stream"]["category"] = category;
@@ -1158,9 +1158,7 @@ void loop() {
       ntpSyncEnabled = true;
       char timeStr[30];
       strftime(timeStr, sizeof(timeStr), "%Y-%m-%d %H:%M:%S", &timeinfo);
-      loki("ntp", "NTP sync result: " + String(timeStr));
-      delay(500);
-      loki("system", "Firmware: " + String(FIRMWARE_VERSION) + ", WiFi: " + ssid + ", IP: " + WiFi.localIP().toString() + ", MAC: " + WiFi.macAddress());
+      loki("system", "NTP: " + String(timeStr) + " | Firmware: " + String(FIRMWARE_VERSION) + " | WiFi: " + ssid + ", IP: " + WiFi.localIP().toString() + ", MAC: " + WiFi.macAddress());
     }
   }
 
