@@ -30,7 +30,7 @@
 #define LOKI_PORT_ADDR 113
 
 // Firmware version and OTA update tracking
-#define FIRMWARE_VERSION "0.1.15"
+#define FIRMWARE_VERSION "0.1.16"
 #define UPDATE_PENDING_ADDR 118   // 1 byte: 0=stable, 1=pending verification
 #define UPDATE_ATTEMPTS_ADDR 119  // 1 byte: consecutive failed update count
 #define MAX_UPDATE_ATTEMPTS 2
@@ -345,13 +345,13 @@ void loki(const String &category, const String &logMessage) {
   struct timeval tv;
   gettimeofday(&tv, NULL);
 
-  unsigned long long epochNanoseconds;
   if (tv.tv_sec < 1735689600) {
-    epochNanoseconds = (unsigned long long)(millis()) * 1000000ULL;
-  } else {
-    epochNanoseconds = (unsigned long long)(tv.tv_sec) * 1000000000ULL +
-                       (unsigned long long)(tv.tv_usec) * 1000ULL;
+    return;
   }
+
+  unsigned long long epochNanoseconds =
+      (unsigned long long)(tv.tv_sec) * 1000000000ULL +
+      (unsigned long long)(tv.tv_usec) * 1000ULL;
 
   StaticJsonDocument<512> jsonDoc;
   jsonDoc["streams"][0]["stream"]["device"] = deviceName;
