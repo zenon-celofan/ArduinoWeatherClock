@@ -30,7 +30,7 @@
 #define LOKI_PORT_ADDR 113
 
 // Firmware version and OTA update tracking
-#define FIRMWARE_VERSION "0.1.13"
+#define FIRMWARE_VERSION "0.1.14"
 #define UPDATE_PENDING_ADDR 118   // 1 byte: 0=stable, 1=pending verification
 #define UPDATE_ATTEMPTS_ADDR 119  // 1 byte: consecutive failed update count
 #define MAX_UPDATE_ATTEMPTS 2
@@ -363,10 +363,11 @@ void loki(const String &category, const String &logMessage) {
   http.addHeader("Content-Type", "application/json");
 
   int httpResponseCode = http.POST(jsonPayload);
-  if (httpResponseCode > 0) {
-    Serial.println("Log sent to Loki: " + logMessage);
+  String response = http.getString();
+  if (httpResponseCode == 204 || httpResponseCode == 200) {
+    Serial.println("Loki OK [HTTP " + String(httpResponseCode) + "]: " + logMessage);
   } else {
-    Serial.println("Failed to send log to Loki. HTTP response code: " + String(httpResponseCode));
+    Serial.println("Loki FAILED [HTTP " + String(httpResponseCode) + "]: " + logMessage + " | Response: " + response);
     if (httpResponseCode < 0) {
       Serial.println("Connection error (negative HTTP code). Check Loki server connectivity.");
     }
