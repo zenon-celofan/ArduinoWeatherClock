@@ -30,7 +30,7 @@
 #define LOKI_PORT_ADDR 113
 
 // Firmware version and OTA update tracking
-#define FIRMWARE_VERSION "0.1.16"
+#define FIRMWARE_VERSION "0.1.17"
 #define UPDATE_PENDING_ADDR 118   // 1 byte: 0=stable, 1=pending verification
 #define UPDATE_ATTEMPTS_ADDR 119  // 1 byte: consecutive failed update count
 #define MAX_UPDATE_ATTEMPTS 2
@@ -201,7 +201,6 @@ bool checkForUpdates(String &latestTag, String &downloadUrl) {
 // Perform OTA update by downloading firmware and flashing manually
 bool performOTAUpdate(const String &url) {
   Serial.printf("Starting OTA update from: %s\n", url.c_str());
-  loki("ota", "OTA update starting from: " + url);
 
   BearSSL::WiFiClientSecure client;
   client.setInsecure();
@@ -264,11 +263,9 @@ bool performOTAUpdate(const String &url) {
 
   if (Update.end(true)) {
     Serial.printf("Flash complete: %d bytes written\n", totalWritten);
-    loki("ota", "Flash complete: " + String(totalWritten) + " bytes, rebooting");
     return true;
   } else {
     Serial.printf("Flash failed: %s\n", Update.getErrorString());
-    loki("ota", "OTA flash failed: " + String(Update.getErrorString()));
     return false;
   }
 }
@@ -280,11 +277,9 @@ void handleUpdateBootCheck() {
 
   if (pending == 1) {
     Serial.printf("Update pending detected (attempts: %d)\n", attempts);
-    loki("ota", "Update pending detected, attempt " + String(attempts + 1));
 
     if (attempts >= MAX_UPDATE_ATTEMPTS) {
       Serial.println("Max update attempts reached, disabling auto-update");
-      loki("ota", "Max update attempts reached, disabling auto-update");
       EEPROM.write(AUTO_UPDATE_ADDR, 0);
       EEPROM.write(UPDATE_PENDING_ADDR, 0);
       EEPROM.write(UPDATE_ATTEMPTS_ADDR, 0);
@@ -297,7 +292,6 @@ void handleUpdateBootCheck() {
 
     Serial.printf("Starting 10s sanity timer (attempt %d/%d)...\n",
       attempts + 1, MAX_UPDATE_ATTEMPTS);
-    loki("ota", "Sanity timer started");
 
     unsigned long start = millis();
     while (millis() - start < 10000) {
@@ -307,7 +301,6 @@ void handleUpdateBootCheck() {
     }
 
     Serial.println("Sanity timer passed - marking update as verified");
-    loki("ota", "Sanity timer passed, update verified");
     EEPROM.write(UPDATE_PENDING_ADDR, 0);
     EEPROM.write(UPDATE_ATTEMPTS_ADDR, 0);
     EEPROM.commit();
@@ -855,14 +848,12 @@ bool connectToWiFi(const String &ssid, const String &password) {
       lastWifiConnectedAt = millis();
       wifiWasEverConnected = true;
       wifiDisconnectedSince = 0;
-      loki("wifi", "Connected, IP: " + WiFi.localIP().toString() + ", Firmware: " + FIRMWARE_VERSION);
       return true;
     }
     delay(500);
     Serial.print(".");
   }
   Serial.println("\nFailed to connect.");
-  loki("wifi", "Failed to connect to WiFi");
   if (wifiDisconnectedSince == 0) wifiDisconnectedSince = millis();
   return false;
 }
@@ -1076,7 +1067,6 @@ void setup() {
       String latestTag, downloadUrl;
       if (checkForUpdates(latestTag, downloadUrl)) {
         Serial.printf("Update available: %s\n", latestTag.c_str());
-        loki("ota", "Update available: " + latestTag);
         EEPROM.write(UPDATE_PENDING_ADDR, 1);
         EEPROM.commit();
 
@@ -1085,7 +1075,6 @@ void setup() {
         matrixDisplay.print("+");
 
         Serial.println("Starting OTA flashing...");
-        loki("ota", "Flashing started for version: " + latestTag);
         if (performOTAUpdate(downloadUrl)) {
           ESP.restart();
         } else {
@@ -1095,7 +1084,6 @@ void setup() {
         }
       } else {
         Serial.println("No updates available, current version: " + String(FIRMWARE_VERSION));
-        loki("ota", "No updates available, current: " + String(FIRMWARE_VERSION));
         matrixDisplay.setTextAlignment(PA_CENTER);
         matrixDisplay.setFont(BigFontNew);
         matrixDisplay.print("-");
@@ -1156,9 +1144,8 @@ void setup() {
 
   t.setInterval(printFreeHeapSize, 60 * 1000);
 
-  loki("system", "setup() completed.");
+  Serial.println("setup() completed.");
 }
-
 
 void loop() {
   server.handleClient();
@@ -1167,12 +1154,14 @@ void loop() {
   if (WiFi.getMode() != WIFI_AP && WiFi.status() == WL_CONNECTED && !ntpSyncEnabled) {
     Serial.println("Re-enabling NTP synchronization...");
     configTime(gmtOffsetSec, daylightOffsetSec, ntpServer1, ntpServer2);
-    ntpSyncEnabled = true;
-    delay(100);
     if (getLocalTime(&timeinfo)) {
+      ntpSyncEnabled = true;
       char timeStr[30];
       strftime(timeStr, sizeof(timeStr), "%Y-%m-%d %H:%M:%S", &timeinfo);
       loki("ntp", "NTP sync result: " + String(timeStr));
+      loki("system", "Firmware version: " + String(FIRMWARE_VERSION));
+      loki("wifi", "Connected to: " + ssid + ", IP: " + WiFi.localIP().toString());
+      loki("wifi", "MAC: " + WiFi.macAddress());
     }
   }
 
