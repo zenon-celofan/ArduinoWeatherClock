@@ -30,7 +30,7 @@
 #define LOKI_PORT_ADDR 113
 
 // Firmware version and OTA update tracking
-#define FIRMWARE_VERSION "0.1.17"
+#define FIRMWARE_VERSION "0.1.18"
 #define UPDATE_PENDING_ADDR 118   // 1 byte: 0=stable, 1=pending verification
 #define UPDATE_ATTEMPTS_ADDR 119  // 1 byte: consecutive failed update count
 #define MAX_UPDATE_ATTEMPTS 2
@@ -1054,7 +1054,7 @@ void setup() {
 
   matrixDisplay.setIntensity(brightness); // Set initial brightness level
 
-  String ssid, password;
+  String password;
   if (loadWiFiCredentials(ssid, password) && connectToWiFi(ssid, password)) {
     Serial.println("WiFi connected using stored credentials.");
     ntpSyncEnabled = true;
@@ -1159,8 +1159,11 @@ void loop() {
       char timeStr[30];
       strftime(timeStr, sizeof(timeStr), "%Y-%m-%d %H:%M:%S", &timeinfo);
       loki("ntp", "NTP sync result: " + String(timeStr));
+      delay(250);
       loki("system", "Firmware version: " + String(FIRMWARE_VERSION));
+      delay(250);
       loki("wifi", "Connected to: " + ssid + ", IP: " + WiFi.localIP().toString());
+      delay(250);
       loki("wifi", "MAC: " + WiFi.macAddress());
     }
   }
