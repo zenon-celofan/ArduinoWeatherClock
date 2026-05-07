@@ -30,7 +30,7 @@
 #define LOKI_PORT_ADDR 113
 
 // Firmware version and OTA update tracking
-#define FIRMWARE_VERSION "0.1.11"
+#define FIRMWARE_VERSION "0.1.12"
 #define UPDATE_PENDING_ADDR 118   // 1 byte: 0=stable, 1=pending verification
 #define UPDATE_ATTEMPTS_ADDR 119  // 1 byte: consecutive failed update count
 #define MAX_UPDATE_ATTEMPTS 2
@@ -85,6 +85,7 @@ bool showTime = true; // Variable to toggle between time and temperature
 String lokiIP;
 String lokiURL;
 String deviceName;
+String lastDisplayContent;
 
 // OTA update variables
 String latestVersion = "";
@@ -942,43 +943,51 @@ void refreshDisplay() {
   bool wifiStale = wifiWasEverConnected && wifiDisconnectedSince > 0 && (millis() - wifiDisconnectedSince) > 60000;
 
   if (apMode) {
-    matrixDisplay.setTextAlignment(PA_CENTER);
     snprintf(displayStr, sizeof(displayStr), "AP");
+    matrixDisplay.setTextAlignment(PA_CENTER);
     matrixDisplay.setFont(BigFontNew);
     matrixDisplay.setIntensity(brightness);
     matrixDisplay.print(displayStr);
+    if (lastDisplayContent != displayStr) {
+      loki("display", "change: " + String(displayStr));
+      lastDisplayContent = displayStr;
+    }
     return;
   }
 
   if (wifiStale) {
     unsigned long cycle = (millis() - wifiDisconnectedSince) % 10000;
     if (cycle < 1000) {
+      snprintf(displayStr, sizeof(displayStr), "wifi");
       matrixDisplay.setTextAlignment(PA_CENTER);
-      matrixDisplay.setFont(BigFontNew);
-      matrixDisplay.setIntensity(brightness);
-      matrixDisplay.print("wifi");
     } else {
       getLocalTime(&timeinfo);
-      matrixDisplay.setTextAlignment(PA_RIGHT);
       snprintf(displayStr, sizeof(displayStr), "%d%02d", timeinfo.tm_hour, timeinfo.tm_min);
-      matrixDisplay.setFont(BigFontNew);
-      matrixDisplay.setIntensity(brightness);
-      matrixDisplay.print(displayStr);
+      matrixDisplay.setTextAlignment(PA_RIGHT);
     }
+    if (lastDisplayContent != displayStr) {
+      loki("display", "change: " + String(displayStr));
+      lastDisplayContent = displayStr;
+    }
+    matrixDisplay.setFont(BigFontNew);
+    matrixDisplay.setIntensity(brightness);
+    matrixDisplay.print(displayStr);
     return;
   }
 
   if (displayMode == 1 || (displayMode == 0 && showTime)) {
     getLocalTime(&timeinfo);
-    matrixDisplay.setTextAlignment(PA_RIGHT);
     snprintf(displayStr, sizeof(displayStr), "%d%02d", timeinfo.tm_hour, timeinfo.tm_min);
-    loki("display", displayStr);
   } else {
     int temp = round(localtemp);
-    matrixDisplay.setTextAlignment(PA_CENTER);
     snprintf(displayStr, sizeof(displayStr), temp > 0 ? "+%d" : "%d", temp);
-    loki("display", displayStr);
   }
+
+  if (lastDisplayContent != displayStr) {
+    loki("display", "change: " + String(displayStr));
+    lastDisplayContent = displayStr;
+  }
+  matrixDisplay.setTextAlignment(displayMode == 1 || (displayMode == 0 && showTime) ? PA_RIGHT : PA_CENTER);
   matrixDisplay.setFont(BigFontNew);
   matrixDisplay.setIntensity(brightness);
   matrixDisplay.print(displayStr);
