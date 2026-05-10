@@ -23,9 +23,10 @@
 #include "src/display_utils.h"
 #include "src/update_utils.h"
 #include "src/loki_utils.h"
+#include "src/weather_utils.h"
 
 // Firmware version and OTA update tracking
-#define FIRMWARE_VERSION "0.1.29"
+#define FIRMWARE_VERSION "0.1.30"
 #define MAX_UPDATE_ATTEMPTS 2
 
 #define GITHUB_REPO_URL "https://github.com/zenon-celofan/ArduinoWeatherClock"
@@ -663,20 +664,15 @@ bool fetchTemperatureAndTimezone(const String &latitude, const String &longitude
       Serial.println(payload);
       loki("weatherserver", "Response: " + payload);
       
-      // Parse JSON response
-      StaticJsonDocument<1024> doc;
-      DeserializationError error = deserializeJson(doc, payload);
-      if (error) {
-        Serial.print("JSON deserialization failed: ");
-        Serial.println(error.f_str()); return false;
+      WeatherData data;
+      if (!parseOpenMeteoResponse(payload, data)) {
+        Serial.println("JSON parse failed");
+        return false;
       }
-      
-      // Extract temperature from parsed JSON
-      temperature = doc["current_weather"]["temperature"];
-      
-      // Extract timezone info from parsed JSON
-      gmtOffsetSec = doc["utc_offset_seconds"];
-      daylightOffsetSec = doc["timezone_abbreviation"] == "DST" ? 3600 : 0; http.end();
+      temperature = data.temperature;
+      gmtOffsetSec = data.utcOffsetSec;
+      daylightOffsetSec = data.daylightOffsetSec;
+      http.end();
       return true;
     } else {
       Serial.print("HTTP error: ");
