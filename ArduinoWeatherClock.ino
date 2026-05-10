@@ -14,34 +14,15 @@
 
 #include "src/semver_compare.h"
 #include "src/eeprom_utils.h"
+#include "src/eeprom_map.h"
+#include "src/eeprom_config.h"
 #include "src/temp_utils.h"
 #include "src/url_utils.h"
 #include "src/device_utils.h"
 
-// Constants for EEPROM
-#define EEPROM_SIZE 127
-#define SSID_ADDR 0
-#define PASS_ADDR 32
-#define FLAG_ADDR 64
-#define LATITUDE_ADDR 65
-#define LONGITUDE_ADDR 80
-#define BRIGHTNESS_ADDR 95
-#define DISPLAY_MODE_ADDR 96
-#define TIME_DISPLAY_DURATION_ADDR 97
-#define TEMP_DISPLAY_DURATION_ADDR 99
-#define LOKI_IP1_ADDR 101
-#define LOKI_IP2_ADDR 104
-#define LOKI_IP3_ADDR 107
-#define LOKI_IP4_ADDR 110
-#define LOKI_PORT_ADDR 113
-
 // Firmware version and OTA update tracking
-#define FIRMWARE_VERSION "0.1.23"
-#define UPDATE_PENDING_ADDR 118   // 1 byte: 0=stable, 1=pending verification
-#define UPDATE_ATTEMPTS_ADDR 119  // 1 byte: consecutive failed update count
+#define FIRMWARE_VERSION "0.1.24"
 #define MAX_UPDATE_ATTEMPTS 2
-#define AUTO_UPDATE_ADDR 120      // 1 byte: 0=disabled, 1=enabled
-#define LOKI_ENABLED_ADDR 121     // 1 byte: 0=disabled, 1=enabled
 
 #define GITHUB_REPO_URL "https://github.com/zenon-celofan/ArduinoWeatherClock"
 
@@ -104,9 +85,6 @@ void loki(const String &category, const String &logMessage);
 bool checkForUpdates(String &latestTag, String &downloadUrl);
 bool performOTAUpdate(const String &url);
 void handleUpdateBootCheck();
-bool loadLokiEnabled();
-void loadLocationData(String &latitude, String &longitude);
-void saveLocationData(const String &latitude, const String &longitude);
 
 // Check GitHub for latest release
 bool checkForUpdates(String &latestTag, String &downloadUrl) {
@@ -369,110 +347,6 @@ void reconnectWifi() {
     lastWifiConnectedAt = millis();
     wifiDisconnectedSince = 0;
   }
-}
-
-// Save location data to EEPROM
-void saveLocationData(const String &latitude, const String &longitude) {
-  writeStringToEEPROM(LATITUDE_ADDR, latitude, 15);
-  writeStringToEEPROM(LONGITUDE_ADDR, longitude, 15);
-  EEPROM.commit();
-}
-
-// Load location data from EEPROM
-void loadLocationData(String &latitude, String &longitude) {
-  latitude = readStringFromEEPROM(LATITUDE_ADDR, 15);
-  longitude = readStringFromEEPROM(LONGITUDE_ADDR, 15);
-}
-
-// Load WiFi credentials from EEPROM
-bool loadWiFiCredentials(String &ssid, String &password) {
-  if (EEPROM.read(FLAG_ADDR) == 1) {
-    ssid = readStringFromEEPROM(SSID_ADDR, 32);
-    password = readStringFromEEPROM(PASS_ADDR, 32);
-    return true;
-  }
-  return false;
-}
-
-// Save WiFi credentials to EEPROM
-void saveWiFiCredentials(const String &ssid, const String &password) {
-  writeStringToEEPROM(SSID_ADDR, ssid, 32);
-  writeStringToEEPROM(PASS_ADDR, password, 32);
-  EEPROM.write(FLAG_ADDR, 1);
-  EEPROM.commit();
-}
-
-// Load brightness from EEPROM
-int loadBrightness() {
-  return EEPROM.read(BRIGHTNESS_ADDR);
-}
-
-// Save brightness to EEPROM
-void saveBrightness(int brightness) {
-  EEPROM.write(BRIGHTNESS_ADDR, brightness);
-  EEPROM.commit();
-}
-
-// Load display mode from EEPROM
-int loadDisplayMode() {
-  return EEPROM.read(DISPLAY_MODE_ADDR);
-}
-
-// Save display mode to EEPROM
-void saveDisplayMode(int mode) {
-  EEPROM.write(DISPLAY_MODE_ADDR, mode);
-  EEPROM.commit();
-}
-
-// Load auto-update setting from EEPROM
-bool loadAutoUpdate() {
-  byte val = EEPROM.read(AUTO_UPDATE_ADDR);
-  Serial.printf("loadAutoUpdate - read byte at %d: %d, returning %s\n",
-    AUTO_UPDATE_ADDR, val, val == 1 ? "true" : "false");
-  return val == 1;
-}
-
-void saveAutoUpdate(bool enabled) {
-  Serial.printf("saveAutoUpdate - writing %d to addr %d\n", enabled ? 1 : 0, AUTO_UPDATE_ADDR);
-  EEPROM.write(AUTO_UPDATE_ADDR, enabled ? 1 : 0);
-  EEPROM.commit();
-}
-
-bool loadLokiEnabled() {
-  return EEPROM.read(LOKI_ENABLED_ADDR) == 1;
-}
-
-void saveLokiEnabled(bool enabled) {
-  EEPROM.write(LOKI_ENABLED_ADDR, enabled ? 1 : 0);
-  EEPROM.commit();
-}
-
-// Load time display duration from EEPROM
-int loadTimeDisplayDuration() {
-  int duration = EEPROM.read(TIME_DISPLAY_DURATION_ADDR) << 8;
-  duration += EEPROM.read(TIME_DISPLAY_DURATION_ADDR + 1);
-  return duration;
-}
-
-// Save time display duration to EEPROM
-void saveTimeDisplayDuration(int duration) {
-  EEPROM.write(TIME_DISPLAY_DURATION_ADDR, duration >> 8);
-  EEPROM.write(TIME_DISPLAY_DURATION_ADDR + 1, duration & 0xFF);
-  EEPROM.commit();
-}
-
-// Load temperature display duration from EEPROM
-int loadTempDisplayDuration() {
-  int duration = EEPROM.read(TEMP_DISPLAY_DURATION_ADDR) << 8;
-  duration += EEPROM.read(TEMP_DISPLAY_DURATION_ADDR + 1);
-  return duration;
-}
-
-// Save temperature display duration to EEPROM
-void saveTempDisplayDuration(int duration) {
-  EEPROM.write(TEMP_DISPLAY_DURATION_ADDR, duration >> 8);
-  EEPROM.write(TEMP_DISPLAY_DURATION_ADDR + 1, duration & 0xFF);
-  EEPROM.commit();
 }
 
 // Serve the configuration page

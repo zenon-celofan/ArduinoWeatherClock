@@ -2,7 +2,8 @@ CXX      ?= g++
 CXXFLAGS ?= -std=c++11 -Wall -Wextra -Werror -I ../src -I mocks
 
 SRC      := ../src
-TESTS    := test_semver test_eeprom test_temp test_url test_device
+MOCKS    := mocks
+TESTS    := test_semver test_eeprom test_temp test_url test_device test_eeprom_config
 
 .PHONY: all clean test
 
@@ -11,7 +12,7 @@ all: $(TESTS)
 test_semver: test_semver.cpp $(SRC)/semver_compare.cpp
 	$(CXX) $(CXXFLAGS) -o $@ $^
 
-test_eeprom: test_eeprom.cpp $(SRC)/eeprom_utils.cpp
+test_eeprom: test_eeprom.cpp $(SRC)/eeprom_utils.cpp $(MOCKS)/EEPROM.cpp
 	$(CXX) $(CXXFLAGS) -o $@ $^
 
 test_temp: test_temp.cpp $(SRC)/temp_utils.cpp
@@ -21,6 +22,9 @@ test_url: test_url.cpp $(SRC)/url_utils.cpp
 	$(CXX) $(CXXFLAGS) -o $@ $^
 
 test_device: test_device.cpp $(SRC)/device_utils.cpp
+	$(CXX) $(CXXFLAGS) -o $@ $^
+
+test_eeprom_config: test_eeprom_config.cpp $(SRC)/eeprom_config.cpp $(SRC)/eeprom_utils.cpp $(MOCKS)/EEPROM.cpp
 	$(CXX) $(CXXFLAGS) -o $@ $^
 
 test: $(TESTS)
