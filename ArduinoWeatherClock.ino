@@ -24,9 +24,10 @@
 #include "src/update_utils.h"
 #include "src/loki_utils.h"
 #include "src/weather_utils.h"
+#include "src/wifi_utils.h"
 
 // Firmware version and OTA update tracking
-#define FIRMWARE_VERSION "0.1.30"
+#define FIRMWARE_VERSION "0.1.31"
 #define MAX_UPDATE_ATTEMPTS 2
 
 #define GITHUB_REPO_URL "https://github.com/zenon-celofan/ArduinoWeatherClock"
@@ -315,18 +316,22 @@ void loki(const String &category, const String &logMessage) {
 }
 
 void reconnectWifi() {
-  if (WiFi.status() != WL_CONNECTED) {
-    if (wifiDisconnectedSince == 0) wifiDisconnectedSince = millis();
-    Serial.println("Wi-Fi disconnected. Attempting to reconnect...");
-    loki("wifi", "Attempting WiFi reconnection");
-    connectToWiFi(ssid, password);
-  } else {
-    if (wifiDisconnectedSince > 0) {
-      Serial.printf("Wi-Fi reconnected after %lu seconds\n", (millis() - wifiDisconnectedSince) / 1000);
-      loki("wifi", "WiFi reconnected after " + String((millis() - wifiDisconnectedSince) / 1000) + "s");
-    }
-    lastWifiConnectedAt = millis();
-    wifiDisconnectedSince = 0;
+  unsigned long dur = 0;
+  switch (evaluateReconnectWifi(WiFi.status() == WL_CONNECTED, wifiDisconnectedSince, millis(), &dur)) {
+    case WIFI_FIRST_LOST:
+      wifiDisconnectedSince = millis();
+      Serial.println("Wi-Fi disconnected. Attempting to reconnect...");
+      loki("wifi", "Attempting WiFi reconnection");
+      connectToWiFi(ssid, password);
+      break;
+    case WIFI_RECONNECTED:
+      Serial.printf("Wi-Fi reconnected after %lu seconds\n", dur);
+      loki("wifi", "WiFi reconnected after " + String(dur) + "s");
+      lastWifiConnectedAt = millis();
+      wifiDisconnectedSince = 0;
+      break;
+    default:
+      break;
   }
 }
 
@@ -902,20 +907,23 @@ void loop() {
   matrixDisplay.displayAnimate();
 
   if (WiFi.getMode() != WIFI_AP) {
-    if (WiFi.status() != WL_CONNECTED) {
-      if (wifiDisconnectedSince == 0) {
+    WifiState ws = {wifiDisconnectedSince, lastWifiConnectedAt, wifiWasEverConnected};
+    unsigned long dur = 0;
+    switch (evaluateWifiConnection(WiFi.status() == WL_CONNECTED, ws, millis(), &dur)) {
+      case WIFI_FIRST_LOST:
         wifiDisconnectedSince = millis();
         Serial.println("WiFi lost");
         loki("wifi", "WiFi connection lost");
-      }
-    } else {
-      if (wifiDisconnectedSince > 0) {
-        Serial.printf("WiFi reconnected after %lus\n", (millis() - wifiDisconnectedSince) / 1000);
-        loki("wifi", "WiFi reconnected after " + String((millis() - wifiDisconnectedSince) / 1000) + "s");
+        break;
+      case WIFI_RECONNECTED:
+        Serial.printf("WiFi reconnected after %lus\n", dur);
+        loki("wifi", "WiFi reconnected after " + String(dur) + "s");
         wifiDisconnectedSince = 0;
         lastWifiConnectedAt = millis();
         updateLocalTemperatureAndTimezone();
-      }
+        break;
+      default:
+        break;
     }
   }
 

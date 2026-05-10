@@ -11,3 +11,4 @@ test/test_display
 test/test_update
 test/test_loki
 test/test_weather
+test/test_wifi
