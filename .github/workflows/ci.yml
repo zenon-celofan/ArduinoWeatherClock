@@ -19,7 +19,7 @@ jobs:
       - name: Install ArduinoJson for native tests
         run: |
           mkdir -p ~/Arduino/libraries
-          git clone --branch 7.4.3 --depth 1 \
+          git clone --branch v7.4.3 --depth 1 \
             https://github.com/bblanchon/ArduinoJson.git \
             ~/Arduino/libraries/ArduinoJson
 
