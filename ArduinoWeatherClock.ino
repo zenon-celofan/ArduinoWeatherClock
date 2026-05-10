@@ -12,6 +12,12 @@
 #include <AsyncTimer.h>
 #include <WiFiClientSecureBearSSL.h>
 
+#include "src/semver_compare.h"
+#include "src/eeprom_utils.h"
+#include "src/temp_utils.h"
+#include "src/url_utils.h"
+#include "src/device_utils.h"
+
 // Constants for EEPROM
 #define EEPROM_SIZE 127
 #define SSID_ADDR 0
@@ -30,7 +36,7 @@
 #define LOKI_PORT_ADDR 113
 
 // Firmware version and OTA update tracking
-#define FIRMWARE_VERSION "0.1.22"
+#define FIRMWARE_VERSION "0.1.23"
 #define UPDATE_PENDING_ADDR 118   // 1 byte: 0=stable, 1=pending verification
 #define UPDATE_ATTEMPTS_ADDR 119  // 1 byte: consecutive failed update count
 #define MAX_UPDATE_ATTEMPTS 2
@@ -95,35 +101,12 @@ String updateUrl = "";
 bool connectToWiFi(const String &ssid, const String &password);
 void displayTemperature();
 void loki(const String &category, const String &logMessage);
-int semverCompare(const String &v1, const String &v2);
 bool checkForUpdates(String &latestTag, String &downloadUrl);
 bool performOTAUpdate(const String &url);
 void handleUpdateBootCheck();
 bool loadLokiEnabled();
-String readStringFromEEPROM(int startAddr, int length);
-void writeStringToEEPROM(int startAddr, const String &str, int maxLength);
 void loadLocationData(String &latitude, String &longitude);
 void saveLocationData(const String &latitude, const String &longitude);
-
-// Compare two semver strings: returns 1 if v1 > v2, -1 if v1 < v2, 0 if equal
-int semverCompare(const String &v1, const String &v2) {
-  String s1 = v1, s2 = v2;
-  s1.replace("v", ""); s2.replace("v", "");
-  
-  int major1 = 0, minor1 = 0, patch1 = 0;
-  int major2 = 0, minor2 = 0, patch2 = 0;
-  
-  sscanf(s1.c_str(), "%d.%d.%d", &major1, &minor1, &patch1);
-  sscanf(s2.c_str(), "%d.%d.%d", &major2, &minor2, &patch2);
-  
-  if (major1 > major2) return 1;
-  if (major1 < major2) return -1;
-  if (minor1 > minor2) return 1;
-  if (minor1 < minor2) return -1;
-  if (patch1 > patch2) return 1;
-  if (patch1 < patch2) return -1;
-  return 0;
-}
 
 // Check GitHub for latest release
 bool checkForUpdates(String &latestTag, String &downloadUrl) {
@@ -319,7 +302,7 @@ void initLokiConfig() {
   String lokiPort = readStringFromEEPROM(LOKI_PORT_ADDR, 5);
 
   lokiIP = lokiIP1 + "." + lokiIP2 + "." + lokiIP3 + "." + lokiIP4;
-  lokiURL = "http://" + lokiIP + ":" + lokiPort + "/loki/api/v1/push";
+  lokiURL = buildLokiUrl(lokiIP, lokiPort);
 }
 
 // Function to send log to Loki server
@@ -399,27 +382,6 @@ void saveLocationData(const String &latitude, const String &longitude) {
 void loadLocationData(String &latitude, String &longitude) {
   latitude = readStringFromEEPROM(LATITUDE_ADDR, 15);
   longitude = readStringFromEEPROM(LONGITUDE_ADDR, 15);
-}
-
-// Read a string from EEPROM
-String readStringFromEEPROM(int startAddr, int length) {
-  char data[length + 1];
-  for (int i = 0; i < length; i++) {
-    data[i] = EEPROM.read(startAddr + i);
-  }
-  data[length] = '\0';
-  return String(data);
-}
-
-// Write a string to EEPROM
-void writeStringToEEPROM(int startAddr, const String &str, int maxLength) {
-  for (int i = 0; i < maxLength; i++) {
-    if (i < str.length()) {
-      EEPROM.write(startAddr + i, str[i]);
-    } else {
-      EEPROM.write(startAddr + i, 0);
-    }
-  }
 }
 
 // Load WiFi credentials from EEPROM
@@ -863,7 +825,7 @@ bool fetchTemperatureAndTimezone(const String &latitude, const String &longitude
   if (WiFi.status() == WL_CONNECTED) {
     HTTPClient http;
     WiFiClient client;
-    String url = "http://api.open-meteo.com/v1/forecast?latitude=" + latitude + "&longitude=" + longitude + "&current_weather=true&timezone=auto";
+    String url = buildOpenMeteoUrl(latitude, longitude);
     Serial.print("Request URL: ");
     Serial.println(url);
     loki("weatherserver", "Request: " + url);
@@ -979,8 +941,8 @@ void refreshDisplay() {
     getLocalTime(&timeinfo);
     snprintf(displayStr, sizeof(displayStr), "%d%02d", timeinfo.tm_hour, timeinfo.tm_min);
   } else {
-    int temp = round(localtemp);
-    snprintf(displayStr, sizeof(displayStr), temp > 0 ? "+%d" : "%d", temp);
+    String tempStr = formatTemperature(localtemp);
+    snprintf(displayStr, sizeof(displayStr), "%s", tempStr.c_str());
   }
 
   if (lastDisplayContent != displayStr) {
@@ -1041,8 +1003,7 @@ void setup() {
   String macAddress = WiFi.macAddress();
   Serial.print("MAC Address: ");
   Serial.println(macAddress);
-  deviceName = "device-" + macAddress.substring(macAddress.length() - 5);
-  deviceName.replace(":", "");
+  deviceName = generateDeviceName(macAddress);
 
   // Initialize LED Matrix display
   matrixDisplay.begin();
