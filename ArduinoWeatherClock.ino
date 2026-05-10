@@ -21,9 +21,10 @@
 #include "src/device_utils.h"
 #include "src/metrics_utils.h"
 #include "src/display_utils.h"
+#include "src/update_utils.h"
 
 // Firmware version and OTA update tracking
-#define FIRMWARE_VERSION "0.1.26"
+#define FIRMWARE_VERSION "0.1.27"
 #define MAX_UPDATE_ATTEMPTS 2
 
 #define GITHUB_REPO_URL "https://github.com/zenon-celofan/ArduinoWeatherClock"
@@ -136,29 +137,13 @@ bool checkForUpdates(String &latestTag, String &downloadUrl) {
   
   Serial.printf("Response body length: %d\n", body.length());
   Serial.printf("First 300 chars: %s\n", body.substring(0, 300).c_str());
-  
-  StaticJsonDocument<1024> doc;
-  DeserializationError error = deserializeJson(doc, body);
-  if (error) {
-    Serial.printf("JSON parse error: %s\n", error.f_str());
-    return false;
-  }
-  
-  latestTag = doc["tag_name"].as<String>();
-  if (latestTag.length() == 0) {
-    Serial.println("No release tag found");
-    return false;
-  }
-  
-  if (doc["assets"].size() > 0) {
-    downloadUrl = doc["assets"][0]["browser_download_url"].as<String>();
-  }
-  
-  int cmp = semverCompare(latestTag, FIRMWARE_VERSION);
+
+  bool hasUpdate = parseGitHubRelease(body, latestTag, downloadUrl, FIRMWARE_VERSION);
+
   Serial.printf("Current: %s, Latest: %s, Update available: %s\n",
-    FIRMWARE_VERSION, latestTag.c_str(), cmp > 0 ? "YES" : "NO");
-  
-  return cmp > 0;
+    FIRMWARE_VERSION, latestTag.c_str(), hasUpdate ? "YES" : "NO");
+
+  return hasUpdate;
 }
 
 // Perform OTA update by downloading firmware and flashing manually

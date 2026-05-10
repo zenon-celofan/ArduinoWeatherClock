@@ -3,7 +3,8 @@ CXXFLAGS ?= -std=c++11 -Wall -Wextra -Werror -I ../src -I mocks
 
 SRC      := ../src
 MOCKS    := mocks
-TESTS    := test_semver test_eeprom test_temp test_url test_device test_eeprom_config test_metrics test_display
+JSON_INC := /home/n/Arduino/libraries/ArduinoJson/src
+TESTS    := test_semver test_eeprom test_temp test_url test_device test_eeprom_config test_metrics test_display test_update
 
 .PHONY: all clean test
 
@@ -32,6 +33,9 @@ test_metrics: test_metrics.cpp $(SRC)/metrics_utils.cpp
 
 test_display: test_display.cpp $(SRC)/display_utils.cpp $(SRC)/temp_utils.cpp
 	$(CXX) $(CXXFLAGS) -o $@ $^
+
+test_update: test_update.cpp $(SRC)/update_utils.cpp $(SRC)/semver_compare.cpp
+	$(CXX) $(CXXFLAGS) -I $(JSON_INC) -o $@ $^
 
 test: $(TESTS)
 	@passed=0; failed=0; \

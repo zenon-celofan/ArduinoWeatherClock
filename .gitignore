@@ -8,3 +8,4 @@ test/test_device
 test/test_eeprom_config
 test/test_metrics
 test/test_display
+test/test_update
