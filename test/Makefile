@@ -4,7 +4,7 @@ CXXFLAGS ?= -std=c++11 -Wall -Wextra -Werror -I ../src -I mocks
 SRC      := ../src
 MOCKS    := mocks
 JSON_INC := /home/n/Arduino/libraries/ArduinoJson/src
-TESTS    := test_semver test_eeprom test_temp test_url test_device test_eeprom_config test_metrics test_display test_update test_loki test_weather
+TESTS    := test_semver test_eeprom test_temp test_url test_device test_eeprom_config test_metrics test_display test_update test_loki test_weather test_wifi
 
 .PHONY: all clean test
 
@@ -42,6 +42,9 @@ test_loki: test_loki.cpp $(SRC)/loki_utils.cpp
 
 test_weather: test_weather.cpp $(SRC)/weather_utils.cpp
 	$(CXX) $(CXXFLAGS) -I $(JSON_INC) -o $@ $^
+
+test_wifi: test_wifi.cpp $(SRC)/wifi_utils.cpp
+	$(CXX) $(CXXFLAGS) -o $@ $^
 
 test: $(TESTS)
 	@passed=0; failed=0; \
