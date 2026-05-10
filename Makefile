@@ -2,6 +2,7 @@ FQBN      := esp8266:esp8266:d1_mini
 SKETCH    := ArduinoWeatherClock.ino
 BUILD_DIR := build
 ARDUINO_CLI := /home/n/bin/arduino-cli
+JSON_INC  ?= /home/n/Arduino/libraries/ArduinoJson/src
 
 .PHONY: all build clean test
 
@@ -14,4 +15,4 @@ clean:
 	rm -f $(BUILD_DIR)/*.bin $(BUILD_DIR)/*.elf $(BUILD_DIR)/*.map
 
 test:
-	$(MAKE) -C test test
+	$(MAKE) -C test test JSON_INC="$(JSON_INC)"
