@@ -62,7 +62,9 @@ public:
   }
 
   bool operator==(const String &other) const { return s_ == other.s_; }
+  bool operator==(const char *cstr) const { return s_ == (cstr ? cstr : ""); }
   bool operator!=(const String &other) const { return s_ != other.s_; }
+  bool operator!=(const char *cstr) const { return s_ != (cstr ? cstr : ""); }
   bool operator<(const String &other) const { return s_ < other.s_; }
   bool operator>(const String &other) const { return s_ > other.s_; }
 

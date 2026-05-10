@@ -20,9 +20,10 @@
 #include "src/url_utils.h"
 #include "src/device_utils.h"
 #include "src/metrics_utils.h"
+#include "src/display_utils.h"
 
 // Firmware version and OTA update tracking
-#define FIRMWARE_VERSION "0.1.25"
+#define FIRMWARE_VERSION "0.1.26"
 #define MAX_UPDATE_ATTEMPTS 2
 
 #define GITHUB_REPO_URL "https://github.com/zenon-celofan/ArduinoWeatherClock"
@@ -742,59 +743,29 @@ void updateLocalTemperatureAndTimezone() {
 // Refresh display
 void refreshDisplay() {
   uptime_seconds++;
-  char displayStr[8];
+  getLocalTime(&timeinfo);
 
-  bool wifiStale = wifiWasEverConnected && wifiDisconnectedSince > 0 && (millis() - wifiDisconnectedSince) > 60000;
+  auto decision = decideDisplayContent(
+    apMode,
+    wifiWasEverConnected,
+    wifiDisconnectedSince,
+    millis(),
+    displayMode,
+    showTime,
+    timeinfo.tm_hour,
+    timeinfo.tm_min,
+    localtemp
+  );
 
-  if (apMode) {
-    snprintf(displayStr, sizeof(displayStr), "AP");
-    matrixDisplay.setTextAlignment(PA_CENTER);
-    matrixDisplay.setFont(BigFontNew);
-    matrixDisplay.setIntensity(brightness);
-    matrixDisplay.print(displayStr);
-    if (lastDisplayContent != displayStr) {
-      loki("display", "change: " + String(displayStr));
-      lastDisplayContent = displayStr;
-    }
-    return;
+  if (lastDisplayContent != String(decision.text)) {
+    loki("display", "change: " + String(decision.text));
+    lastDisplayContent = decision.text;
   }
 
-  if (wifiStale) {
-    unsigned long cycle = (millis() - wifiDisconnectedSince) % 10000;
-    if (cycle < 1000) {
-      snprintf(displayStr, sizeof(displayStr), "wifi");
-      matrixDisplay.setTextAlignment(PA_CENTER);
-    } else {
-      getLocalTime(&timeinfo);
-      snprintf(displayStr, sizeof(displayStr), "%d%02d", timeinfo.tm_hour, timeinfo.tm_min);
-      matrixDisplay.setTextAlignment(PA_RIGHT);
-    }
-    if (lastDisplayContent != displayStr) {
-      loki("display", "change: " + String(displayStr));
-      lastDisplayContent = displayStr;
-    }
-    matrixDisplay.setFont(BigFontNew);
-    matrixDisplay.setIntensity(brightness);
-    matrixDisplay.print(displayStr);
-    return;
-  }
-
-  if (displayMode == 1 || (displayMode == 0 && showTime)) {
-    getLocalTime(&timeinfo);
-    snprintf(displayStr, sizeof(displayStr), "%d%02d", timeinfo.tm_hour, timeinfo.tm_min);
-  } else {
-    String tempStr = formatTemperature(localtemp);
-    snprintf(displayStr, sizeof(displayStr), "%s", tempStr.c_str());
-  }
-
-  if (lastDisplayContent != displayStr) {
-    loki("display", "change: " + String(displayStr));
-    lastDisplayContent = displayStr;
-  }
-  matrixDisplay.setTextAlignment(displayMode == 1 || (displayMode == 0 && showTime) ? PA_RIGHT : PA_CENTER);
+  matrixDisplay.setTextAlignment(decision.centered ? PA_CENTER : PA_RIGHT);
   matrixDisplay.setFont(BigFontNew);
   matrixDisplay.setIntensity(brightness);
-  matrixDisplay.print(displayStr);
+  matrixDisplay.print(decision.text);
 }
 
 // Display time

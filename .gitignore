@@ -1,2 +1,10 @@
 ignored/
 build/
+test/test_semver
+test/test_eeprom
+test/test_temp
+test/test_url
+test/test_device
+test/test_eeprom_config
+test/test_metrics
+test/test_display
