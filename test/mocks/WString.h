@@ -16,6 +16,8 @@ public:
   String(unsigned int val) : s_(std::to_string(val)) {}
   String(long val) : s_(std::to_string(val)) {}
   String(unsigned long val) : s_(std::to_string(val)) {}
+  String(float val) : s_(std::to_string(val)) {}
+  String(double val) : s_(std::to_string(val)) {}
 
   const char *c_str() const { return s_.c_str(); }
   int length() const { return s_.length(); }
@@ -63,4 +65,7 @@ public:
   bool operator!=(const String &other) const { return s_ != other.s_; }
   bool operator<(const String &other) const { return s_ < other.s_; }
   bool operator>(const String &other) const { return s_ > other.s_; }
+
+  String &operator+=(const String &other) { s_ += other.s_; return *this; }
+  String &operator+=(const char *cstr) { s_ += cstr; return *this; }
 };

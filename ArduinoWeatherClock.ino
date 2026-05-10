@@ -19,9 +19,10 @@
 #include "src/temp_utils.h"
 #include "src/url_utils.h"
 #include "src/device_utils.h"
+#include "src/metrics_utils.h"
 
 // Firmware version and OTA update tracking
-#define FIRMWARE_VERSION "0.1.24"
+#define FIRMWARE_VERSION "0.1.25"
 #define MAX_UPDATE_ATTEMPTS 2
 
 #define GITHUB_REPO_URL "https://github.com/zenon-celofan/ArduinoWeatherClock"
@@ -618,46 +619,13 @@ void handleSaveConfig() {
 void serveMetrics() {
   getLocalTime(&timeinfo);
   loki("metrics", "/metrics endpoint scraped");
-  String metrics = 
-    "# HELP uptime_seconds The number of seconds the system has been running.\n"
-    "# TYPE uptime_seconds counter\n"
-    "uptime_seconds " + String(uptime_seconds) + "\n"
-    "\n"
-    "# HELP free_heap_mem_bytes Free heap memory left.\n"
-    "# TYPE free_heap_mem_bytes gauge\n"
-    "free_heap_mem_bytes " + String(system_get_free_heap_size()) + "\n"
-    "\n"
-    "# HELP localtime_hours The current hour of the day in 24-hour format.\n"
-    "# TYPE localtime_hours gauge\n"
-    "localtime_hours " + String(timeinfo.tm_hour) + "\n"
-    "\n"    
-    "# HELP localtime_minutes The current minute of the hour.\n"
-    "# TYPE localtime_minutes gauge\n"
-    "localtime_minutes " + String(timeinfo.tm_min) + "\n"
-    "\n"
-    "# HELP localtime_seconds The current second of the minute.\n"
-    "# TYPE localtime_seconds gauge\n"
-    "localtime_seconds " + String(timeinfo.tm_sec) + "\n"
-    "\n"
-    "# HELP localtemp The current local temperature in Celsius.\n"
-    "# TYPE localtemp gauge\n"
-    "localtemp " + String(localtemp) + "\n"
-    "\n"
-    "# HELP brightness The current brightness level of the LED display.\n"
-    "# TYPE brightness gauge\n"
-    "brightness " + String(brightness) + "\n"
-    "\n"
-    "# HELP display_mode The current display mode of the LED display (0 = both, 1 = time only, 2 = temperature only).\n"
-    "# TYPE display_mode gauge\n"
-    "display_mode " + String(displayMode) + "\n"
-    "\n"
-    "# HELP time_display_duration The duration to display the time in seconds.\n"
-    "# TYPE time_display_duration gauge\n"
-    "time_display_duration " + String(timeDisplayDuration) + "\n"
-    "\n"
-    "# HELP temp_display_duration The duration to display the temperature in seconds.\n"
-    "# TYPE temp_display_duration gauge\n"
-    "temp_display_duration " + String(tempDisplayDuration) + "\n";
+  String metrics = buildMetricsString(
+      uptime_seconds,
+      system_get_free_heap_size(),
+      timeinfo.tm_hour, timeinfo.tm_min, timeinfo.tm_sec,
+      localtemp, brightness, displayMode,
+      timeDisplayDuration, tempDisplayDuration
+  );
   server.send(200, "text/plain", metrics);
 }
 
