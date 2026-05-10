@@ -27,7 +27,7 @@
 #include "wifi_utils.h"
 
 // Firmware version and OTA update tracking
-#define FIRMWARE_VERSION "0.1.32"
+#define FIRMWARE_VERSION "0.1.33"
 #define MAX_UPDATE_ATTEMPTS 2
 
 #define GITHUB_REPO_URL "https://github.com/zenon-celofan/ArduinoWeatherClock"

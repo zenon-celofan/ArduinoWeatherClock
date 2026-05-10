@@ -24,10 +24,13 @@ bool parseGitHubRelease(const String &jsonBody, String &latestTag, String &downl
     if (!tag || strlen(tag) == 0) return false;
     latestTag = tag;
 
+    String foundUrl;
     if (doc["assets"].size() > 0) {
         const char *url = doc["assets"][0]["browser_download_url"];
-        if (url) downloadUrl = url;
+        if (url) foundUrl = url;
     }
+    if (foundUrl.length() == 0) return false;
+    downloadUrl = foundUrl;
 
     return semverCompare(latestTag, currentVersion) > 0;
 }

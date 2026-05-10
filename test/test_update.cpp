@@ -61,13 +61,19 @@ int main() {
     // --- No assets (no download URL) but newer version ---
     {
         String body = "{\"tag_name\":\"v2.0.0\"}";
-        RUN_TEST("no assets but newer", parseGitHubRelease(body, latest, url, "v1.0.0") == true);
-        RUN_TEST("no assets: tag set", latest == "v2.0.0");
+        RUN_TEST("no assets but newer -> false", parseGitHubRelease(body, latest, url, "v1.0.0") == false);
+    }
+
+    // --- No assets, has download_url in root (unusual but valid) ---
+    {
+        String body = "{\"tag_name\":\"v2.0.0\",\"assets\":[{\"browser_download_url\":\"http://dl.bin\"}]}";
+        RUN_TEST("assets with url: returns true", parseGitHubRelease(body, latest, url, "v1.0.0") == true);
+        RUN_TEST("assets with url: url set", url == "http://dl.bin");
     }
 
     // --- Version without v prefix ---
     {
-        String body = "{\"tag_name\":\"2.0.0\"}";
+        String body = "{\"tag_name\":\"2.0.0\",\"assets\":[{\"browser_download_url\":\"http://dl.bin\"}]}";
         RUN_TEST("no v prefix", parseGitHubRelease(body, latest, url, "1.0.0") == true);
         RUN_TEST("no v prefix tag", latest == "2.0.0");
     }
@@ -248,6 +254,19 @@ int main() {
         String tag, url;
         bool ok = checkForUpdates(tag, url, "v1.0.0", wc);
         RUN_TEST("HTTP 200 bad json: returns false", ok == false);
+    }
+
+    // --- WiFi connected, HTTP 200 with newer version but no assets ---
+    {
+        WiFiClient wc;
+        WiFi.resetCounters();
+        WiFi.setStatus(WL_CONNECTED);
+        HTTPClient::setHttpCode(200);
+        HTTPClient::setPayload("{\"tag_name\":\"v2.0.0\"}");
+        String tag, url;
+        bool ok = checkForUpdates(tag, url, "v1.0.0", wc);
+        RUN_TEST("HTTP 200 no assets: returns false", ok == false);
+        RUN_TEST("HTTP 200 no assets: url empty", url == "");
     }
 
     // --- WiFi connected, HTTP code 0 (connection failure) ---
