@@ -22,9 +22,10 @@
 #include "src/metrics_utils.h"
 #include "src/display_utils.h"
 #include "src/update_utils.h"
+#include "src/loki_utils.h"
 
 // Firmware version and OTA update tracking
-#define FIRMWARE_VERSION "0.1.27"
+#define FIRMWARE_VERSION "0.1.28"
 #define MAX_UPDATE_ATTEMPTS 2
 
 #define GITHUB_REPO_URL "https://github.com/zenon-celofan/ArduinoWeatherClock"
@@ -283,27 +284,18 @@ void loki(const String &category, const String &logMessage) {
   struct timeval tv;
   gettimeofday(&tv, NULL);
 
-  if (tv.tv_sec < 1735689600) {
+  if (!isTimestampValid((unsigned long long)tv.tv_sec)) {
     return;
   }
-
-  HTTPClient http;
-  WiFiClient client;
 
   unsigned long long epochNanoseconds =
       (unsigned long long)(tv.tv_sec) * 1000000000ULL +
       (unsigned long long)(tv.tv_usec) * 1000ULL;
 
-  StaticJsonDocument<768> jsonDoc;
-  jsonDoc["streams"][0]["stream"]["device"] = deviceName;
-  jsonDoc["streams"][0]["stream"]["level"] = "info";
-  jsonDoc["streams"][0]["stream"]["category"] = category;
-  jsonDoc["streams"][0]["values"][0][0] = String(epochNanoseconds);
-  jsonDoc["streams"][0]["values"][0][1] = logMessage;
+  String jsonPayload = buildLokiPayload(deviceName, category, logMessage, epochNanoseconds);
 
-  String jsonPayload;
-  serializeJson(jsonDoc, jsonPayload);
-
+  HTTPClient http;
+  WiFiClient client;
   http.begin(client, lokiURL);
   http.addHeader("Content-Type", "application/json");
 

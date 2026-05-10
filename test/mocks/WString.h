@@ -16,6 +16,8 @@ public:
   String(unsigned int val) : s_(std::to_string(val)) {}
   String(long val) : s_(std::to_string(val)) {}
   String(unsigned long val) : s_(std::to_string(val)) {}
+  String(unsigned long long val) : s_(std::to_string(val)) {}
+  String(long long val) : s_(std::to_string(val)) {}
   String(float val) : s_(std::to_string(val)) {}
   String(double val) : s_(std::to_string(val)) {}
 
