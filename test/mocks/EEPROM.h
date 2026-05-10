@@ -27,6 +27,7 @@ struct EEPROMClass {
     }
 
     bool commit() { return true; }
+    void reset() { memset(test_eeprom_mem, 0, TEST_EEPROM_SIZE); }
 };
 
 extern EEPROMClass EEPROM;

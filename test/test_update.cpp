@@ -1,4 +1,10 @@
 #include "update_utils.h"
+#include "eeprom_map.h"
+#include "EEPROM.h"
+#include "ESP8266WiFi.h"
+#include "ESP8266HTTPClient.h"
+#include "Updater.h"
+#include "Arduino.h"
 #include <cstdio>
 #include <cstring>
 #include <cstdlib>
@@ -104,6 +110,227 @@ int main() {
     {
         RUN_TEST("pending 1, attempts=4, max=5 -> RETRY", evaluateUpdateBoot(1, 4, 5) == UPDATE_BOOT_RETRY);
         RUN_TEST("pending 1, attempts=5, max=5 -> DISABLE", evaluateUpdateBoot(1, 5, 5) == UPDATE_BOOT_DISABLE);
+    }
+
+    puts("\n=== handleUpdateBootEEPROM Tests ===\n");
+
+    // --- CLEAR: no pending update ---
+    {
+        EEPROM.begin(127);
+        for (int i = 0; i < 127; i++) EEPROM.write(i, 0);
+        EEPROM.write(UPDATE_PENDING_ADDR, 0);
+        EEPROM.write(UPDATE_ATTEMPTS_ADDR, 5);
+
+        uint8_t attempts = 99;
+        UpdateBootAction a = handleUpdateBootEEPROM(2, attempts);
+        RUN_TEST("no pending -> CLEAR", a == UPDATE_BOOT_CLEAR);
+        RUN_TEST("CLEAR: attempts loaded", attempts == 5);
+        RUN_TEST("CLEAR: attempts reset in EEPROM", EEPROM.read(UPDATE_ATTEMPTS_ADDR) == 0);
+    }
+
+    // --- DISABLE: pending, max attempts reached ---
+    {
+        EEPROM.begin(127);
+        for (int i = 0; i < 127; i++) EEPROM.write(i, 0);
+        EEPROM.write(UPDATE_PENDING_ADDR, 1);
+        EEPROM.write(UPDATE_ATTEMPTS_ADDR, 2);
+        EEPROM.write(AUTO_UPDATE_ADDR, 1);
+
+        uint8_t attempts = 99;
+        UpdateBootAction a = handleUpdateBootEEPROM(2, attempts);
+        RUN_TEST("pending + max attempts -> DISABLE", a == UPDATE_BOOT_DISABLE);
+        RUN_TEST("DISABLE: autoUpdate cleared", EEPROM.read(AUTO_UPDATE_ADDR) == 0);
+        RUN_TEST("DISABLE: pending cleared", EEPROM.read(UPDATE_PENDING_ADDR) == 0);
+        RUN_TEST("DISABLE: attempts cleared", EEPROM.read(UPDATE_ATTEMPTS_ADDR) == 0);
+    }
+
+    // --- RETRY: pending, attempts < max ---
+    {
+        EEPROM.begin(127);
+        for (int i = 0; i < 127; i++) EEPROM.write(i, 0);
+        EEPROM.write(UPDATE_PENDING_ADDR, 1);
+        EEPROM.write(UPDATE_ATTEMPTS_ADDR, 1);
+
+        uint8_t attempts = 99;
+        UpdateBootAction a = handleUpdateBootEEPROM(3, attempts);
+        RUN_TEST("pending + under max -> RETRY", a == UPDATE_BOOT_RETRY);
+        RUN_TEST("RETRY: attempts loaded", attempts == 1);
+        RUN_TEST("RETRY: attempts incremented in EEPROM", EEPROM.read(UPDATE_ATTEMPTS_ADDR) == 2);
+        RUN_TEST("RETRY: pending preserved", EEPROM.read(UPDATE_PENDING_ADDR) == 1);
+    }
+
+    // --- RETRY at boundary: pending, attempts = max - 1 ---
+    {
+        EEPROM.begin(127);
+        for (int i = 0; i < 127; i++) EEPROM.write(i, 0);
+        EEPROM.write(UPDATE_PENDING_ADDR, 1);
+        EEPROM.write(UPDATE_ATTEMPTS_ADDR, 4);
+
+        uint8_t attempts = 99;
+        UpdateBootAction a = handleUpdateBootEEPROM(5, attempts);
+        RUN_TEST("at boundary (4/5) -> RETRY", a == UPDATE_BOOT_RETRY);
+        RUN_TEST("boundary: attempts incremented", EEPROM.read(UPDATE_ATTEMPTS_ADDR) == 5);
+    }
+
+    // --- DISABLE at boundary: pending, attempts = max ---
+    {
+        EEPROM.begin(127);
+        for (int i = 0; i < 127; i++) EEPROM.write(i, 0);
+        EEPROM.write(UPDATE_PENDING_ADDR, 1);
+        EEPROM.write(UPDATE_ATTEMPTS_ADDR, 5);
+        EEPROM.write(AUTO_UPDATE_ADDR, 1);
+
+        uint8_t attempts = 99;
+        UpdateBootAction a = handleUpdateBootEEPROM(5, attempts);
+        RUN_TEST("at boundary (5/5) -> DISABLE", a == UPDATE_BOOT_DISABLE);
+        RUN_TEST("boundary: autoUpdate cleared", EEPROM.read(AUTO_UPDATE_ADDR) == 0);
+    }
+
+    puts("\n=== checkForUpdates Tests ===\n");
+
+    // --- WiFi not connected ---
+    {
+        WiFiClient wc;
+        WiFi.resetCounters();
+        WiFi.setStatus(WL_DISCONNECTED);
+        String tag, url;
+        bool ok = checkForUpdates(tag, url, "v1.0.0", wc);
+        RUN_TEST("not connected: returns false", ok == false);
+        RUN_TEST("not connected: tag empty", tag == "");
+    }
+
+    // --- WiFi connected, HTTP 200 with update ---
+    {
+        WiFiClient wc;
+        WiFi.resetCounters();
+        WiFi.setStatus(WL_CONNECTED);
+        HTTPClient::setHttpCode(200);
+        HTTPClient::setPayload("{\"tag_name\":\"v2.0.0\",\"assets\":[{\"browser_download_url\":\"http://example.com/fw.bin\"}]}");
+        String tag, url;
+        bool ok = checkForUpdates(tag, url, "v1.0.0", wc);
+        RUN_TEST("HTTP 200 with update: returns true", ok == true);
+        RUN_TEST("HTTP 200 with update: tag set", tag == "v2.0.0");
+        RUN_TEST("HTTP 200 with update: url set", url == "http://example.com/fw.bin");
+    }
+
+    // --- WiFi connected, HTTP 200 no update (same version) ---
+    {
+        WiFiClient wc;
+        WiFi.resetCounters();
+        WiFi.setStatus(WL_CONNECTED);
+        HTTPClient::setHttpCode(200);
+        HTTPClient::setPayload("{\"tag_name\":\"v1.0.0\",\"assets\":[]}");
+        String tag, url;
+        bool ok = checkForUpdates(tag, url, "v1.0.0", wc);
+        RUN_TEST("HTTP 200 same version: returns false", ok == false);
+    }
+
+    // --- WiFi connected, HTTP error (404) ---
+    {
+        WiFiClient wc;
+        WiFi.resetCounters();
+        WiFi.setStatus(WL_CONNECTED);
+        HTTPClient::setHttpCode(404);
+        HTTPClient::setPayload("Not Found");
+        String tag = "unchanged", url = "unchanged";
+        bool ok = checkForUpdates(tag, url, "v1.0.0", wc);
+        RUN_TEST("HTTP 404: returns false", ok == false);
+        RUN_TEST("HTTP 404: tag unchanged", tag == "unchanged");
+    }
+
+    // --- WiFi connected, HTTP 200 with invalid JSON ---
+    {
+        WiFiClient wc;
+        WiFi.resetCounters();
+        WiFi.setStatus(WL_CONNECTED);
+        HTTPClient::setHttpCode(200);
+        HTTPClient::setPayload("not json");
+        String tag, url;
+        bool ok = checkForUpdates(tag, url, "v1.0.0", wc);
+        RUN_TEST("HTTP 200 bad json: returns false", ok == false);
+    }
+
+    // --- WiFi connected, HTTP code 0 (connection failure) ---
+    {
+        WiFiClient wc;
+        WiFi.resetCounters();
+        WiFi.setStatus(WL_CONNECTED);
+        HTTPClient::setHttpCode(0);
+        HTTPClient::setPayload("");
+        String tag, url;
+        bool ok = checkForUpdates(tag, url, "v1.0.0", wc);
+        RUN_TEST("HTTP 0: returns false", ok == false);
+    }
+
+    puts("\n=== flashOTAUpdate Tests ===\n");
+
+    // --- HTTP error (404) ---
+    {
+        HTTPClient http;
+        WiFiClient stream;
+        UpdaterClass updater;
+        HTTPClient::setConnected(true);
+        bool ok = flashOTAUpdate(http, stream, updater, 404, 1024);
+        RUN_TEST("HTTP 404: returns false", ok == false);
+        RUN_TEST("HTTP 404: nothing written to updater", updater.written() == 0);
+    }
+
+    // --- Invalid content length (0) ---
+    {
+        HTTPClient http;
+        WiFiClient stream;
+        UpdaterClass updater;
+        HTTPClient::setConnected(true);
+        bool ok = flashOTAUpdate(http, stream, updater, 200, 0);
+        RUN_TEST("content length 0: returns false", ok == false);
+    }
+
+    // --- Invalid content length (-1) ---
+    {
+        HTTPClient http;
+        WiFiClient stream;
+        UpdaterClass updater;
+        HTTPClient::setConnected(true);
+        bool ok = flashOTAUpdate(http, stream, updater, 200, -1);
+        RUN_TEST("content length -1: returns false", ok == false);
+    }
+
+    // --- Update.begin fails ---
+    {
+        HTTPClient http;
+        WiFiClient stream;
+        UpdaterClass updater;
+        updater.setBeginResult(false);
+        HTTPClient::setConnected(true);
+        bool ok = flashOTAUpdate(http, stream, updater, 200, 1024);
+        RUN_TEST("Update.begin fails: returns false", ok == false);
+        RUN_TEST("Update.begin fails: nothing written", updater.written() == 0);
+    }
+
+    // --- Successful OTA download and flash ---
+    {
+        HTTPClient http;
+        WiFiClient stream;
+        stream.setStreamBytes(2048);
+        UpdaterClass updater;
+        HTTPClient::setConnected(true);
+        bool ok = flashOTAUpdate(http, stream, updater, 200, 2048);
+        RUN_TEST("successful OTA: returns true", ok == true);
+        RUN_TEST("successful OTA: all bytes written", updater.written() == 2048);
+        RUN_TEST("successful OTA: write called 4 times (512*4=2048)", updater.writeCount() == 4);
+    }
+
+    // --- Update.end fails after successful download ---
+    {
+        HTTPClient http;
+        WiFiClient stream;
+        stream.setStreamBytes(1024);
+        UpdaterClass updater;
+        updater.setEndResult(false);
+        HTTPClient::setConnected(true);
+        bool ok = flashOTAUpdate(http, stream, updater, 200, 1024);
+        RUN_TEST("Update.end fails: returns false", ok == false);
+        RUN_TEST("Update.end fails: bytes still written", updater.written() == 1024);
     }
 
     puts("\n---\nAll update tests passed!");

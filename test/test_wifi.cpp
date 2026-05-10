@@ -1,4 +1,6 @@
 #include "wifi_utils.h"
+#include "ESP8266WiFi.h"
+#include "Arduino.h"
 #include <cstdio>
 
 #define RUN_TEST(name, expr) do {                                    \
@@ -106,6 +108,61 @@ int main() {
     {
         RUN_TEST("reconnect: null duration -> RECONNECTED",
             evaluateReconnectWifi(true, 1000, 5000, NULL) == WIFI_RECONNECTED);
+    }
+
+    puts("\n=== connectToWiFi Tests ===\n");
+
+    unsigned long connectedAt = 0;
+    bool wasEverConnected = false;
+    unsigned long disconnectedSince = 0;
+
+    // --- Immediate connect ---
+    {
+        connectedAt = 0; wasEverConnected = false; disconnectedSince = 0;
+        WiFi.resetCounters();
+        WiFi.setStatus(WL_CONNECTED);
+        mock_millis = 5000;
+        bool ok = connectToWiFi("test", "pass", connectedAt, wasEverConnected, disconnectedSince);
+        RUN_TEST("immediate connect returns true", ok == true);
+        RUN_TEST("immediate: connectedAt set", connectedAt == 5000);
+        RUN_TEST("immediate: wasEverConnected", wasEverConnected == true);
+        RUN_TEST("immediate: disconnectedSince cleared", disconnectedSince == 0);
+    }
+
+    // --- Connect after 3 calls (2 failures then success) ---
+    {
+        connectedAt = 0; wasEverConnected = false; disconnectedSince = 0;
+        WiFi.resetCounters();
+        WiFi.setStatus(WL_DISCONNECTED);
+        WiFi.setConnectAfterCalls(3);
+        mock_millis = 50000;
+        bool ok = connectToWiFi("test", "pass", connectedAt, wasEverConnected, disconnectedSince);
+        RUN_TEST("connect after 3 attempts returns true", ok == true);
+        RUN_TEST("connect after 3: wasEverConnected", wasEverConnected == true);
+        RUN_TEST("connect after 3: disconnectedSince cleared", disconnectedSince == 0);
+    }
+
+    // --- Never connects ---
+    {
+        connectedAt = 0; wasEverConnected = false; disconnectedSince = 0;
+        WiFi.resetCounters();
+        WiFi.setStatus(WL_DISCONNECTED);
+        mock_millis = 50000;
+        bool ok = connectToWiFi("test", "pass", connectedAt, wasEverConnected, disconnectedSince);
+        RUN_TEST("never connect returns false", ok == false);
+        RUN_TEST("never: wasEverConnected still false", wasEverConnected == false);
+        RUN_TEST("never: disconnectedSince set", disconnectedSince == 50000);
+    }
+
+    // --- Already wasEverConnected, disconnectSince already set, connect fails ---
+    {
+        connectedAt = 0; wasEverConnected = true; disconnectedSince = 1000;
+        WiFi.resetCounters();
+        WiFi.setStatus(WL_DISCONNECTED);
+        mock_millis = 50000;
+        bool ok = connectToWiFi("test", "pass", connectedAt, wasEverConnected, disconnectedSince);
+        RUN_TEST("still fails: returns false", ok == false);
+        RUN_TEST("still fails: disconnectedSince unchanged (already set)", disconnectedSince == 1000);
     }
 
     puts("\n---\nAll wifi tests passed!");

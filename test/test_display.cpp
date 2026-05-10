@@ -98,6 +98,29 @@ int main() {
         RUN_TEST("temp=0.0 displays as '0'", text_eq(d, "0"));
     }
 
+    puts("\n=== detectDisplayChange Tests ===\n");
+
+    {
+        String last = "";
+        RUN_TEST("first call detects change", detectDisplayChange("hello", last) == true);
+        RUN_TEST("first call updates last", last == "hello");
+    }
+    {
+        String last = "hello";
+        RUN_TEST("same text no change", detectDisplayChange("hello", last) == false);
+        RUN_TEST("same text last unchanged", last == "hello");
+    }
+    {
+        String last = "hello";
+        RUN_TEST("different text detects change", detectDisplayChange("world", last) == true);
+        RUN_TEST("different text updates last", last == "world");
+    }
+    {
+        String last = "1234";
+        RUN_TEST("change to wifi", detectDisplayChange("wifi", last) == true);
+        RUN_TEST("no change after update", detectDisplayChange("wifi", last) == false);
+    }
+
     puts("\n---\nAll display tests passed!");
     return 0;
 }

@@ -7,6 +7,8 @@ struct DisplayDecision {
     bool centered;
 };
 
+bool detectDisplayChange(const char *newText, String &lastContent);
+
 DisplayDecision decideDisplayContent(
     bool apMode,
     bool wifiWasEverConnected,

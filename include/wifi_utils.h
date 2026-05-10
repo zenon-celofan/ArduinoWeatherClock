@@ -1,5 +1,6 @@
 #pragma once
 
+#include <WString.h>
 #include <cstdint>
 
 enum WifiEvent : uint8_t {
@@ -18,3 +19,8 @@ struct WifiState {
 WifiEvent evaluateWifiConnection(bool isConnected, const WifiState &state, unsigned long now, unsigned long *outDurationSec);
 
 WifiEvent evaluateReconnectWifi(bool isConnected, unsigned long wifiDisconnectedSince, unsigned long now, unsigned long *outDurationSec);
+
+bool connectToWiFi(const String &ssid, const String &password,
+                   unsigned long &lastWifiConnectedAt,
+                   bool &wifiWasEverConnected,
+                   unsigned long &wifiDisconnectedSince);

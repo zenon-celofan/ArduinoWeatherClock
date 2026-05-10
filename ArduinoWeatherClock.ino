@@ -12,22 +12,22 @@
 #include <AsyncTimer.h>
 #include <WiFiClientSecureBearSSL.h>
 
-#include "src/semver_compare.h"
-#include "src/eeprom_utils.h"
-#include "src/eeprom_map.h"
-#include "src/eeprom_config.h"
-#include "src/temp_utils.h"
-#include "src/url_utils.h"
-#include "src/device_utils.h"
-#include "src/metrics_utils.h"
-#include "src/display_utils.h"
-#include "src/update_utils.h"
-#include "src/loki_utils.h"
-#include "src/weather_utils.h"
-#include "src/wifi_utils.h"
+#include "semver_compare.h"
+#include "eeprom_utils.h"
+#include "eeprom_map.h"
+#include "eeprom_config.h"
+#include "temp_utils.h"
+#include "url_utils.h"
+#include "device_utils.h"
+#include "metrics_utils.h"
+#include "display_utils.h"
+#include "update_utils.h"
+#include "loki_utils.h"
+#include "weather_utils.h"
+#include "wifi_utils.h"
 
 // Firmware version and OTA update tracking
-#define FIRMWARE_VERSION "0.1.31"
+#define FIRMWARE_VERSION "0.1.32"
 #define MAX_UPDATE_ATTEMPTS 2
 
 #define GITHUB_REPO_URL "https://github.com/zenon-celofan/ArduinoWeatherClock"
@@ -75,7 +75,6 @@ MD_Parola matrixDisplay = MD_Parola(HARDWARE_TYPE, CS_PIN, MAX_DEVICES);
 bool showTime = true; // Variable to toggle between time and temperature
 
 // Global variables for Loki configuration
-String lokiIP;
 String lokiURL;
 String deviceName;
 String lastDisplayContent;
@@ -97,222 +96,48 @@ bool checkForUpdates(String &latestTag, String &downloadUrl) {
   BearSSL::WiFiClientSecure client;
   client.setInsecure();
   client.setBufferSizes(512, 512);
-  
-  const char* host = "api.github.com";
-  String request = "GET /repos/zenon-celofan/ArduinoWeatherClock/releases/latest HTTP/1.1\r\n"
-                   "Host: api.github.com\r\n"
-                   "User-Agent: ESP8266-Weather-Clock\r\n"
-                   "Accept: application/vnd.github+json\r\n"
-                   "Connection: close\r\n\r\n";
-  
-  Serial.println("Connecting to GitHub API...");
-  if (!client.connect(host, 443)) {
-    Serial.println("Connection to GitHub failed");
-    return false;
-  }
-  
-  client.print(request);
-  Serial.println("Request sent, waiting for response...");
-  
-  unsigned long timeout = millis();
-  while (!client.available() && millis() - timeout < 10000) {
-    delay(10);
-  }
-  
-  if (!client.available()) {
-    Serial.println("Timeout waiting for response");
-    client.stop();
-    return false;
-  }
-  
-  while (client.available()) {
-    String line = client.readStringUntil('\n');
-    if (line == "\r" || line.length() == 0) break;
-  }
-  
-  String body;
-  while (client.available()) {
-    body += client.readStringUntil('\n');
-    body += "\n";
-    yield();
-  }
-  client.stop();
-  
-  Serial.printf("Response body length: %d\n", body.length());
-  Serial.printf("First 300 chars: %s\n", body.substring(0, 300).c_str());
-
-  bool hasUpdate = parseGitHubRelease(body, latestTag, downloadUrl, FIRMWARE_VERSION);
-
-  Serial.printf("Current: %s, Latest: %s, Update available: %s\n",
-    FIRMWARE_VERSION, latestTag.c_str(), hasUpdate ? "YES" : "NO");
-
-  return hasUpdate;
+  return ::checkForUpdates(latestTag, downloadUrl, FIRMWARE_VERSION, client);
 }
 
 // Perform OTA update by downloading firmware and flashing manually
 bool performOTAUpdate(const String &url) {
-  Serial.printf("Starting OTA update from: %s\n", url.c_str());
-
   BearSSL::WiFiClientSecure client;
   client.setInsecure();
-
   HTTPClient http;
   http.begin(client, url);
   http.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
   http.setTimeout(120000);
-
   int httpCode = http.GET();
-  Serial.printf("Download HTTP code: %d\n", httpCode);
-
-  if (httpCode != HTTP_CODE_OK) {
-    Serial.printf("Download failed: %d\n", httpCode);
-    http.end();
-    return false;
-  }
-
   int contentLength = http.getSize();
-  Serial.printf("Firmware size: %d bytes\n", contentLength);
-
-  if (contentLength <= 0) {
-    Serial.println("Invalid content length");
-    http.end();
-    return false;
-  }
-
   WiFiClient *stream = http.getStreamPtr();
-
-  if (!Update.begin(contentLength, U_FLASH)) {
-    Serial.printf("Update.begin failed: %s\n", Update.getErrorString());
-    http.end();
-    return false;
-  }
-
-  Serial.println("Flashing firmware...");
-  uint8_t buff[1024] = { 0 };
-  size_t totalWritten = 0;
-
-  unsigned long start = millis();
-  while (http.connected() && totalWritten < (size_t)contentLength) {
-    if (millis() - start > 60000) {
-      Serial.println("Download timeout");
-      break;
-    }
-    size_t avail = stream->available();
-    if (avail) {
-      size_t toRead = (avail > sizeof(buff)) ? sizeof(buff) : avail;
-      size_t read = stream->readBytes(buff, toRead);
-      Update.write(buff, read);
-      totalWritten += read;
-      start = millis();
-      if (totalWritten % 50000 < read) {
-        Serial.printf("  Progress: %d/%d bytes\n", totalWritten, contentLength);
-      }
-    }
-    yield();
-  }
-  http.end();
-
-  if (Update.end(true)) {
-    Serial.printf("Flash complete: %d bytes written\n", totalWritten);
-    return true;
-  } else {
-    Serial.printf("Flash failed: %s\n", Update.getErrorString());
-    return false;
-  }
+  return ::flashOTAUpdate(http, *stream, Update, httpCode, contentLength);
 }
 
 // Handle boot-time update check and rollback
 void handleUpdateBootCheck() {
-  byte pending = EEPROM.read(UPDATE_PENDING_ADDR);
-  byte attempts = EEPROM.read(UPDATE_ATTEMPTS_ADDR);
+  uint8_t attempts = 0;
+  UpdateBootAction action = handleUpdateBootEEPROM(MAX_UPDATE_ATTEMPTS, attempts);
 
-  switch (evaluateUpdateBoot(pending, attempts, MAX_UPDATE_ATTEMPTS)) {
-    case UPDATE_BOOT_CLEAR:
-      EEPROM.write(UPDATE_ATTEMPTS_ADDR, 0);
-      EEPROM.commit();
-      break;
-
-    case UPDATE_BOOT_DISABLE:
-      Serial.printf("Update pending detected (attempts: %d), max reached, disabling auto-update\n", attempts);
-      EEPROM.write(AUTO_UPDATE_ADDR, 0);
-      EEPROM.write(UPDATE_PENDING_ADDR, 0);
-      EEPROM.write(UPDATE_ATTEMPTS_ADDR, 0);
-      EEPROM.commit();
-      break;
-
-    case UPDATE_BOOT_RETRY:
-      Serial.printf("Update pending detected (attempts: %d), running sanity timer (attempt %d/%d)...\n",
-        attempts, attempts + 1, MAX_UPDATE_ATTEMPTS);
-
-      EEPROM.write(UPDATE_ATTEMPTS_ADDR, attempts + 1);
-      EEPROM.commit();
-
-      unsigned long start = millis();
-      while (millis() - start < 10000) {
-        server.handleClient();
-        matrixDisplay.displayAnimate();
-        t.handle();
-      }
-
-      Serial.println("Sanity timer passed - marking update as verified");
-      EEPROM.write(UPDATE_PENDING_ADDR, 0);
-      EEPROM.write(UPDATE_ATTEMPTS_ADDR, 0);
-      EEPROM.commit();
-      break;
+  if (action == UPDATE_BOOT_RETRY) {
+    unsigned long start = millis();
+    while (millis() - start < 10000) {
+      server.handleClient();
+      matrixDisplay.displayAnimate();
+      t.handle();
+    }
+    Serial.println("Sanity timer passed - marking update as verified");
+    EEPROM.write(UPDATE_PENDING_ADDR, 0);
+    EEPROM.write(UPDATE_ATTEMPTS_ADDR, 0);
+    EEPROM.commit();
   }
-}
-
-// Function to initialize Loki configuration
-void initLokiConfig() {
-  String lokiIP1 = readStringFromEEPROM(LOKI_IP1_ADDR, 3);
-  String lokiIP2 = readStringFromEEPROM(LOKI_IP2_ADDR, 3);
-  String lokiIP3 = readStringFromEEPROM(LOKI_IP3_ADDR, 3);
-  String lokiIP4 = readStringFromEEPROM(LOKI_IP4_ADDR, 3);
-  String lokiPort = readStringFromEEPROM(LOKI_PORT_ADDR, 5);
-
-  lokiIP = lokiIP1 + "." + lokiIP2 + "." + lokiIP3 + "." + lokiIP4;
-  lokiURL = buildLokiUrl(lokiIP, lokiPort);
 }
 
 // Function to send log to Loki server
 void loki(const String &category, const String &logMessage) {
   if (!loadLokiEnabled()) return;
-  if (WiFi.status() != WL_CONNECTED) {
-    return;
-  }
-  if (lokiURL.length() == 0) {
-    return;
-  }
-
-  struct timeval tv;
-  gettimeofday(&tv, NULL);
-
-  if (!isTimestampValid((unsigned long long)tv.tv_sec)) {
-    return;
-  }
-
-  unsigned long long epochNanoseconds =
-      (unsigned long long)(tv.tv_sec) * 1000000000ULL +
-      (unsigned long long)(tv.tv_usec) * 1000ULL;
-
-  String jsonPayload = buildLokiPayload(deviceName, category, logMessage, epochNanoseconds);
-
-  HTTPClient http;
-  WiFiClient client;
-  http.begin(client, lokiURL);
-  http.addHeader("Content-Type", "application/json");
-
-  int httpResponseCode = http.POST(jsonPayload);
-  String response = http.getString();
-  if (httpResponseCode == 204 || httpResponseCode == 200) {
-    Serial.println("Loki OK [HTTP " + String(httpResponseCode) + "]: " + logMessage);
-  } else {
-    Serial.println("Loki FAILED [HTTP " + String(httpResponseCode) + "]: " + logMessage + " | Response: " + response);
-    if (httpResponseCode < 0) {
-      Serial.println("Connection error (negative HTTP code). Check Loki server connectivity.");
-    }
-  }
-  http.end();
+  if (WiFi.status() != WL_CONNECTED) return;
+  if (lokiURL.length() == 0) return;
+  sendLokiLog(lokiURL, deviceName, category, logMessage);
 }
 
 void reconnectWifi() {
@@ -625,77 +450,15 @@ void startWebServer() {
 
 // Connect to WiFi using stored credentials
 bool connectToWiFi(const String &ssid, const String &password) {
-  WiFi.mode(WIFI_STA);
-  WiFi.begin(ssid.c_str(), password.c_str());
-  Serial.print("Connecting to WiFi");
-
-  for (int i = 0; i < 20; i++) {
-    if (WiFi.status() == WL_CONNECTED) {
-      Serial.println("\nConnected!");
-      Serial.print("IP Address: ");
-      Serial.println(WiFi.localIP());
-      lastWifiConnectedAt = millis();
-      wifiWasEverConnected = true;
-      wifiDisconnectedSince = 0;
-      return true;
-    }
-    delay(500);
-    Serial.print(".");
-  }
-  Serial.println("\nFailed to connect.");
-  if (wifiDisconnectedSince == 0) wifiDisconnectedSince = millis();
-  return false;
+  return ::connectToWiFi(ssid, password, lastWifiConnectedAt, wifiWasEverConnected, wifiDisconnectedSince);
 }
 
-// Fetch temperature and timezone from Open-Meteo API
-bool fetchTemperatureAndTimezone(const String &latitude, const String &longitude, float &temperature, long &gmtOffsetSec, int &daylightOffsetSec) {
-  if (WiFi.status() == WL_CONNECTED) {
-    HTTPClient http;
-    WiFiClient client;
-    String url = buildOpenMeteoUrl(latitude, longitude);
-    Serial.print("Request URL: ");
-    Serial.println(url);
-    loki("weatherserver", "Request: " + url);
-    http.begin(client, url);
-    Serial.println("http.begin - ok");
-    int httpCode = http.GET();
-    Serial.println("GET - ok");
-    Serial.print("Http response code: ");
-    Serial.println(httpCode);
-    loki("weatherserver", "HTTP response code: " + String(httpCode));
-    if (httpCode > 0) {
-      String payload = http.getString();
-      Serial.print("Response: ");
-      Serial.println(payload);
-      loki("weatherserver", "Response: " + payload);
-      
-      WeatherData data;
-      if (!parseOpenMeteoResponse(payload, data)) {
-        Serial.println("JSON parse failed");
-        return false;
-      }
-      temperature = data.temperature;
-      gmtOffsetSec = data.utcOffsetSec;
-      daylightOffsetSec = data.daylightOffsetSec;
-      http.end();
-      return true;
-    } else {
-      Serial.print("HTTP error: ");
-      Serial.println(httpCode);
-      loki("weatherserver", "HTTP error: " + String(httpCode));
-    }
-    http.end();
-  }
-  reconnectWifi();
-  return false;
-}
+
 
 // Update local temperature and timezone from the internet
 void updateLocalTemperatureAndTimezone() {
   if (apMode) return;
-  String latitude, longitude;
-  loadLocationData(latitude, longitude);
-  if (fetchTemperatureAndTimezone(latitude, longitude, localtemp, gmtOffsetSec, daylightOffsetSec)) {
+  if (::updateLocalWeatherData(localtemp, gmtOffsetSec, daylightOffsetSec)) {
     Serial.print("Temperature: ");
     Serial.println(localtemp);
     Serial.print("GMT Offset: ");
@@ -716,6 +479,7 @@ void updateLocalTemperatureAndTimezone() {
   } else {
     Serial.println("Failed to fetch temperature and timezone.");
     loki("weatherserver", "Failed to fetch temperature and timezone.");
+    reconnectWifi();
   }
 }
 
@@ -736,9 +500,8 @@ void refreshDisplay() {
     localtemp
   );
 
-  if (lastDisplayContent != String(decision.text)) {
+  if (detectDisplayChange(decision.text, lastDisplayContent)) {
     loki("display", "change: " + String(decision.text));
-    lastDisplayContent = decision.text;
   }
 
   matrixDisplay.setTextAlignment(decision.centered ? PA_CENTER : PA_RIGHT);
@@ -765,20 +528,17 @@ void displayTemperature() {
 void displayIPAddress() {
   IPAddress ip = WiFi.localIP();
   for (int i = 0; i < 4; i++) {
-    char partStr[4];
-    snprintf(partStr, sizeof(partStr), "%03d", ip[i]);
-    if (i < 3) {
-      strcat(partStr, ".");
-    }
+    String part = formatIPOctet(ip[i], i < 3);
     matrixDisplay.setTextAlignment(PA_CENTER);
     matrixDisplay.setFont(BigFontNew); // Use the custom font
-    matrixDisplay.print(partStr); delay(1000);
+    matrixDisplay.print(part); delay(1000);
   }
 }
 
 void printFreeHeapSize() {
-  Serial.println("Uptime: " + String(uptime_seconds) + "s, Free memory: " + String(system_get_free_heap_size()) + " bytes");
-  loki("heartbeat", "Uptime: " + String(uptime_seconds) + "s, Free memory: " + String(system_get_free_heap_size()) + " bytes");
+  String msg = buildHeartbeatMessage(uptime_seconds, system_get_free_heap_size());
+  Serial.println(msg);
+  loki("heartbeat", msg);
 }
 
 
@@ -787,7 +547,7 @@ void setup() {
   EEPROM.begin(EEPROM_SIZE);
 
   // Initialize Loki configuration
-  initLokiConfig();
+  lokiURL = buildLokiUrlFromEEPROM();
 
   Serial.printf("FIRMWARE VERSION: %s\n", FIRMWARE_VERSION);
 
@@ -848,8 +608,7 @@ void setup() {
   } else {
     Serial.println("Starting Access Point for configuration...");
 
-    String lastThreeChunks = macAddress.substring(macAddress.length() - 8);
-    String ssid = "Clock_AP_" + lastThreeChunks;
+    String ssid = generateAPName(macAddress);
     String password = "12345678"; // Set your AP password here
 
     // Custom IP configuration

@@ -1,6 +1,16 @@
 #include "display_utils.h"
 #include "temp_utils.h"
 #include <cstdio>
+#include <cstring>
+
+bool detectDisplayChange(const char *newText, String &lastContent) {
+    String newStr(newText);
+    if (lastContent != newStr) {
+        lastContent = newStr;
+        return true;
+    }
+    return false;
+}
 
 static bool computeWifiStale(
     bool wifiWasEverConnected,
