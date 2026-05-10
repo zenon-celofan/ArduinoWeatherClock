@@ -10,3 +10,6 @@ String buildLokiUrlFromEEPROM();
 
 bool sendLokiLog(const String &lokiURL, const String &deviceName,
                  const String &category, const String &logMessage);
+
+bool sendLokiIfEnabled(const String &lokiURL, const String &deviceName,
+                       const String &category, const String &logMessage);

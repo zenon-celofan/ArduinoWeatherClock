@@ -37,7 +37,7 @@ test_display: test_display.cpp $(SRC)/display_utils.cpp $(SRC)/temp_utils.cpp
 test_update: test_update.cpp $(SRC)/update_utils.cpp $(SRC)/semver_compare.cpp $(MOCKS)/EEPROM.cpp $(MOCKS)/Serial.cpp $(MOCKS)/ESP8266WiFi.cpp $(MOCKS)/ESP8266HTTPClient.cpp
 	$(CXX) $(CXXFLAGS) -I $(JSON_INC) -o $@ $^
 
-test_loki: test_loki.cpp $(SRC)/loki_utils.cpp $(SRC)/eeprom_utils.cpp $(SRC)/url_utils.cpp $(MOCKS)/EEPROM.cpp $(MOCKS)/Serial.cpp $(MOCKS)/ESP8266WiFi.cpp $(MOCKS)/ESP8266HTTPClient.cpp
+test_loki: test_loki.cpp $(SRC)/loki_utils.cpp $(SRC)/eeprom_config.cpp $(SRC)/eeprom_utils.cpp $(SRC)/url_utils.cpp $(MOCKS)/EEPROM.cpp $(MOCKS)/Serial.cpp $(MOCKS)/ESP8266WiFi.cpp $(MOCKS)/ESP8266HTTPClient.cpp
 	$(CXX) $(CXXFLAGS) -I $(JSON_INC) -o $@ $^
 
 test_weather: test_weather.cpp $(SRC)/weather_utils.cpp $(SRC)/url_utils.cpp $(SRC)/eeprom_config.cpp $(SRC)/eeprom_utils.cpp $(MOCKS)/EEPROM.cpp $(MOCKS)/Serial.cpp $(MOCKS)/ESP8266WiFi.cpp $(MOCKS)/ESP8266HTTPClient.cpp

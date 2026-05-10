@@ -1,9 +1,11 @@
 #include "loki_utils.h"
+#include "eeprom_config.h"
 #include "eeprom_map.h"
 #include "eeprom_utils.h"
 #include "url_utils.h"
 #include <Arduino.h>
 #include <ESP8266HTTPClient.h>
+#include <ESP8266WiFi.h>
 #include <sys/time.h>
 #include <ArduinoJson.h>
 #include <string>
@@ -67,4 +69,12 @@ bool sendLokiLog(const String &lokiURL, const String &deviceName,
     }
     http.end();
     return ok;
+}
+
+bool sendLokiIfEnabled(const String &lokiURL, const String &deviceName,
+                       const String &category, const String &logMessage) {
+    if (!loadLokiEnabled()) return false;
+    if (WiFi.status() != WL_CONNECTED) return false;
+    if (lokiURL.length() == 0) return false;
+    return sendLokiLog(lokiURL, deviceName, category, logMessage);
 }

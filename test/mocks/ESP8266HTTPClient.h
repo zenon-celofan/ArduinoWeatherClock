@@ -30,17 +30,20 @@ class HTTPClient {
     static String s_payload;
     static bool s_connected;
     static WiFiClient *s_streamPtr;
+    static int s_postCallCount;
 
 public:
     static void setHttpCode(int code) { s_httpCode = code; }
     static void setPayload(const String &p) { s_payload = p; }
     static void setConnected(bool c) { s_connected = c; }
     static void setStreamPtr(WiFiClient *p) { s_streamPtr = p; }
+    static int postCallCount() { return s_postCallCount; }
+    static void resetPostCallCount() { s_postCallCount = 0; }
 
     void begin(WiFiClient &, const String &) {}
     void addHeader(const String &, const String &) {}
     int GET() { return s_httpCode; }
-    int POST(const String &) { return s_httpCode; }
+    int POST(const String &) { s_postCallCount++; return s_httpCode; }
     String getString() { return s_payload; }
     void end() {}
     void setFollowRedirects(bool) {}

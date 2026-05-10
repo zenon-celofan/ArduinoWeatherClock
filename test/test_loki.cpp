@@ -1,8 +1,10 @@
 #include "loki_utils.h"
+#include "eeprom_config.h"
 #include "eeprom_map.h"
 #include "eeprom_utils.h"
 #include "EEPROM.h"
 #include "ESP8266HTTPClient.h"
+#include "ESP8266WiFi.h"
 #include "Arduino.h"
 #include <cstdio>
 #include <cstring>
@@ -137,6 +139,92 @@ int main() {
         HTTPClient::setHttpCode(-1);
         bool ok = sendLokiLog("http://loki:3100", "dev", "test", "hello");
         RUN_TEST("HTTP -1 returns false", ok == false);
+    }
+
+    // --- sendLokiIfEnabled tests ---
+    puts("\n=== sendLokiIfEnabled Tests ===\n");
+
+    // --- Loki disabled (EEPROM LOKI_ENABLED_ADDR = 0) ---
+    {
+        EEPROM.reset();
+        EEPROM.begin(127);
+        WiFi.setStatus(WL_CONNECTED);
+        HTTPClient::resetPostCallCount();
+        HTTPClient::setHttpCode(204);
+
+        bool ok = sendLokiIfEnabled("http://loki:3100", "dev", "test", "msg");
+        RUN_TEST("loki disabled returns false", ok == false);
+        RUN_TEST("loki disabled: no POST call", HTTPClient::postCallCount() == 0);
+    }
+
+    // --- Loki enabled, WiFi not connected ---
+    {
+        EEPROM.reset();
+        EEPROM.begin(127);
+        EEPROM.write(LOKI_ENABLED_ADDR, 1);
+        WiFi.setStatus(WL_DISCONNECTED);
+        HTTPClient::resetPostCallCount();
+        HTTPClient::setHttpCode(204);
+
+        bool ok = sendLokiIfEnabled("http://loki:3100", "dev", "test", "msg");
+        RUN_TEST("wifi not connected returns false", ok == false);
+        RUN_TEST("wifi not connected: no POST call", HTTPClient::postCallCount() == 0);
+    }
+
+    // --- Loki enabled, WiFi connected, empty URL ---
+    {
+        EEPROM.reset();
+        EEPROM.begin(127);
+        EEPROM.write(LOKI_ENABLED_ADDR, 1);
+        WiFi.setStatus(WL_CONNECTED);
+        HTTPClient::resetPostCallCount();
+        HTTPClient::setHttpCode(204);
+
+        bool ok = sendLokiIfEnabled("", "dev", "test", "msg");
+        RUN_TEST("empty URL returns false", ok == false);
+        RUN_TEST("empty URL: no POST call", HTTPClient::postCallCount() == 0);
+    }
+
+    // --- All conditions met, HTTP 204 ---
+    {
+        EEPROM.reset();
+        EEPROM.begin(127);
+        EEPROM.write(LOKI_ENABLED_ADDR, 1);
+        WiFi.setStatus(WL_CONNECTED);
+        HTTPClient::resetPostCallCount();
+        HTTPClient::setHttpCode(204);
+
+        bool ok = sendLokiIfEnabled("http://loki:3100", "dev", "test", "msg");
+        RUN_TEST("all ok HTTP 204 returns true", ok == true);
+        RUN_TEST("all ok: POST was called", HTTPClient::postCallCount() >= 1);
+    }
+
+    // --- All conditions met, HTTP 400 ---
+    {
+        EEPROM.reset();
+        EEPROM.begin(127);
+        EEPROM.write(LOKI_ENABLED_ADDR, 1);
+        WiFi.setStatus(WL_CONNECTED);
+        HTTPClient::resetPostCallCount();
+        HTTPClient::setHttpCode(400);
+
+        bool ok = sendLokiIfEnabled("http://loki:3100", "dev", "test", "msg");
+        RUN_TEST("all ok HTTP 400 returns false", ok == false);
+        RUN_TEST("all ok HTTP 400: POST was called", HTTPClient::postCallCount() >= 1);
+    }
+
+    // --- All conditions met, HTTP 200 ---
+    {
+        EEPROM.reset();
+        EEPROM.begin(127);
+        EEPROM.write(LOKI_ENABLED_ADDR, 1);
+        WiFi.setStatus(WL_CONNECTED);
+        HTTPClient::resetPostCallCount();
+        HTTPClient::setHttpCode(200);
+
+        bool ok = sendLokiIfEnabled("http://loki:3100", "dev", "test", "msg");
+        RUN_TEST("all ok HTTP 200 returns true", ok == true);
+        RUN_TEST("all ok HTTP 200: POST was called", HTTPClient::postCallCount() >= 1);
     }
 
     puts("\n---\nAll loki tests passed!");

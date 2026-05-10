@@ -27,7 +27,7 @@
 #include "wifi_utils.h"
 
 // Firmware version and OTA update tracking
-#define FIRMWARE_VERSION "0.1.33"
+#define FIRMWARE_VERSION "0.1.34"
 #define MAX_UPDATE_ATTEMPTS 2
 
 #define GITHUB_REPO_URL "https://github.com/zenon-celofan/ArduinoWeatherClock"
@@ -134,10 +134,7 @@ void handleUpdateBootCheck() {
 
 // Function to send log to Loki server
 void loki(const String &category, const String &logMessage) {
-  if (!loadLokiEnabled()) return;
-  if (WiFi.status() != WL_CONNECTED) return;
-  if (lokiURL.length() == 0) return;
-  sendLokiLog(lokiURL, deviceName, category, logMessage);
+  sendLokiIfEnabled(lokiURL, deviceName, category, logMessage);
 }
 
 void reconnectWifi() {
