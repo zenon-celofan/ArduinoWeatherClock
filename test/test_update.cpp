@@ -79,6 +79,33 @@ int main() {
         RUN_TEST("first asset url", url == "http://first.bin");
     }
 
+    puts("\n=== evaluateUpdateBoot Tests ===\n");
+
+    // --- No pending update ---
+    {
+        RUN_TEST("no pending, attempts=0 -> CLEAR", evaluateUpdateBoot(0, 0, 3) == UPDATE_BOOT_CLEAR);
+        RUN_TEST("no pending, attempts=5 -> CLEAR", evaluateUpdateBoot(0, 5, 3) == UPDATE_BOOT_CLEAR);
+    }
+
+    // --- Pending, attempts within limit ---
+    {
+        RUN_TEST("pending 1, attempts=0, max=2 -> RETRY", evaluateUpdateBoot(1, 0, 2) == UPDATE_BOOT_RETRY);
+        RUN_TEST("pending 1, attempts=1, max=2 -> RETRY", evaluateUpdateBoot(1, 1, 2) == UPDATE_BOOT_RETRY);
+    }
+
+    // --- Pending, attempts at or above limit ---
+    {
+        RUN_TEST("pending 1, attempts=2, max=2 -> DISABLE", evaluateUpdateBoot(1, 2, 2) == UPDATE_BOOT_DISABLE);
+        RUN_TEST("pending 1, attempts=3, max=2 -> DISABLE", evaluateUpdateBoot(1, 3, 2) == UPDATE_BOOT_DISABLE);
+        RUN_TEST("pending 1, attempts=0, max=0 -> DISABLE", evaluateUpdateBoot(1, 0, 0) == UPDATE_BOOT_DISABLE);
+    }
+
+    // --- Different max values ---
+    {
+        RUN_TEST("pending 1, attempts=4, max=5 -> RETRY", evaluateUpdateBoot(1, 4, 5) == UPDATE_BOOT_RETRY);
+        RUN_TEST("pending 1, attempts=5, max=5 -> DISABLE", evaluateUpdateBoot(1, 5, 5) == UPDATE_BOOT_DISABLE);
+    }
+
     puts("\n---\nAll update tests passed!");
     return 0;
 }

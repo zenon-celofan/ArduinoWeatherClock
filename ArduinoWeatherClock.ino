@@ -25,7 +25,7 @@
 #include "src/loki_utils.h"
 
 // Firmware version and OTA update tracking
-#define FIRMWARE_VERSION "0.1.28"
+#define FIRMWARE_VERSION "0.1.29"
 #define MAX_UPDATE_ATTEMPTS 2
 
 #define GITHUB_REPO_URL "https://github.com/zenon-celofan/ArduinoWeatherClock"
@@ -224,38 +224,39 @@ void handleUpdateBootCheck() {
   byte pending = EEPROM.read(UPDATE_PENDING_ADDR);
   byte attempts = EEPROM.read(UPDATE_ATTEMPTS_ADDR);
 
-  if (pending == 1) {
-    Serial.printf("Update pending detected (attempts: %d)\n", attempts);
+  switch (evaluateUpdateBoot(pending, attempts, MAX_UPDATE_ATTEMPTS)) {
+    case UPDATE_BOOT_CLEAR:
+      EEPROM.write(UPDATE_ATTEMPTS_ADDR, 0);
+      EEPROM.commit();
+      break;
 
-    if (attempts >= MAX_UPDATE_ATTEMPTS) {
-      Serial.println("Max update attempts reached, disabling auto-update");
+    case UPDATE_BOOT_DISABLE:
+      Serial.printf("Update pending detected (attempts: %d), max reached, disabling auto-update\n", attempts);
       EEPROM.write(AUTO_UPDATE_ADDR, 0);
       EEPROM.write(UPDATE_PENDING_ADDR, 0);
       EEPROM.write(UPDATE_ATTEMPTS_ADDR, 0);
       EEPROM.commit();
-      return;
-    }
+      break;
 
-    EEPROM.write(UPDATE_ATTEMPTS_ADDR, attempts + 1);
-    EEPROM.commit();
+    case UPDATE_BOOT_RETRY:
+      Serial.printf("Update pending detected (attempts: %d), running sanity timer (attempt %d/%d)...\n",
+        attempts, attempts + 1, MAX_UPDATE_ATTEMPTS);
 
-    Serial.printf("Starting 10s sanity timer (attempt %d/%d)...\n",
-      attempts + 1, MAX_UPDATE_ATTEMPTS);
+      EEPROM.write(UPDATE_ATTEMPTS_ADDR, attempts + 1);
+      EEPROM.commit();
 
-    unsigned long start = millis();
-    while (millis() - start < 10000) {
-      server.handleClient();
-      matrixDisplay.displayAnimate();
-      t.handle();
-    }
+      unsigned long start = millis();
+      while (millis() - start < 10000) {
+        server.handleClient();
+        matrixDisplay.displayAnimate();
+        t.handle();
+      }
 
-    Serial.println("Sanity timer passed - marking update as verified");
-    EEPROM.write(UPDATE_PENDING_ADDR, 0);
-    EEPROM.write(UPDATE_ATTEMPTS_ADDR, 0);
-    EEPROM.commit();
-  } else {
-    EEPROM.write(UPDATE_ATTEMPTS_ADDR, 0);
-    EEPROM.commit();
+      Serial.println("Sanity timer passed - marking update as verified");
+      EEPROM.write(UPDATE_PENDING_ADDR, 0);
+      EEPROM.write(UPDATE_ATTEMPTS_ADDR, 0);
+      EEPROM.commit();
+      break;
   }
 }
 
