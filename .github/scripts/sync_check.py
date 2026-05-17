@@ -43,9 +43,9 @@ Format:
 Omit any file that doesn't need changes. Do NOT add explanations or markdown wrapping."""
 
 models = [
-    "mistralai/mistral-small-3.1:free",
-    "google/gemini-2.5-flash-preview:free",
-    "qwen/qwen2.5-72b-instruct:free",
+    "arcee-ai/trinity-large-thinking:free",
+    "deepseek/deepseek-v4-flash:free",
+    "meta-llama/llama-3.3-70b-instruct:free",
 ]
 
 last_err = None
