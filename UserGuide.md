@@ -6,6 +6,16 @@ A compact ESP8266-based weather clock that displays the current time and outdoor
 
 ---
 
+## Hardware Connections
+
+If assembling the device yourself, connect the LED matrix display to the following ESP8266 pins:
+
+- **CLK** → D5 (or SCK)
+- **DATA** → D7 (or MOSI)
+- **CS** → D8 (or SS)
+
+---
+
 ## Initial Setup
 
 ### 1. Power On
@@ -63,6 +73,8 @@ These options are visible by default but are not required for basic operation.
 **Loki Port** - Port number for the Loki server (default: `3100`)
 
 **Enable Loki Logging** - Checkbox to enable or disable sending logs to Loki. When unchecked, the IP and Port fields are grayed out and cannot be edited.
+
+**Metrics Endpoint** - The device exposes a `/metrics` endpoint that provides Prometheus metrics for monitoring performance and status.
 
 ---
 
