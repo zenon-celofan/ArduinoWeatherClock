@@ -67,21 +67,25 @@ else:
     print(f"All models failed. Last error: {last_err}")
     sys.exit(1)
 
+print(f"Raw response length: {len(content)} chars")
+print(f"First 200 chars: {content[:200]}")
+
 if content == "NO_CHANGES":
     print("Docs are in sync — no changes needed")
     sys.exit(0)
 
 files_to_add = []
 parts = content.split("===")
-for part in parts:
-    part = part.strip()
-    if part.startswith("UserGuide.md"):
+# parts[0] is preamble before first header, skip it
+for i in range(1, len(parts), 2):
+    header = parts[i].strip()
+    body = parts[i + 1].strip() if i + 1 < len(parts) else ""
+    path = None
+    if header == "UserGuide.md":
         path = "UserGuide.md"
-        body = part.removeprefix("UserGuide.md").strip()
-    elif part.startswith("README.md"):
+    elif header == "README.md":
         path = "README.md"
-        body = part.removeprefix("README.md").strip()
-    else:
+    if path is None:
         continue
     with open(path, "w") as f:
         f.write(body + "\n")
