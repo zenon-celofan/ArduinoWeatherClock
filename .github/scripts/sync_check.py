@@ -43,7 +43,7 @@ Format:
 Omit any file that doesn't need changes. Do NOT add explanations or markdown wrapping."""
 
 resp = client.chat.completions.create(
-    model="baidu/cobuddy:free",
+    model="meta-llama/llama-3.3-70b-instruct:free",
     messages=[{"role": "user", "content": prompt}],
     temperature=0,
 )
