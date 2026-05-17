@@ -8,13 +8,19 @@ client = OpenAI(
 )
 
 guide = open("UserGuide.md").read()
+readme = open("README.md").read()
 ino   = open("ArduinoWeatherClock.ino").read()
 eeprom_map = open("include/eeprom_map.h").read()
 
-prompt = f"""You are a technical doc reviewer. Compare the UserGuide.md against the source code and EEPROM map below.
+has_readme = bool(readme.strip())
+
+prompt = f"""You are a technical doc reviewer. Compare UserGuide.md and README.md against the source code.
 
 UserGuide.md:
 {guide}
+
+README.md:
+{'[empty - needs initial content based on code]' if not has_readme else readme}
 
 ArduinoWeatherClock.ino:
 {ino}
@@ -22,11 +28,19 @@ ArduinoWeatherClock.ino:
 include/eeprom_map.h:
 {eeprom_map}
 
-If UserGuide.md is fully in sync with the code, reply with exactly:
+Check for: firmware version, hardware pins, config fields, API endpoints, display modes, features.
+If both files are in sync with the code, reply with exactly:
 NO_CHANGES
 
-If there are discrepancies, reply with the COMPLETE updated UserGuide.md content.
-Do NOT add any explanation or markdown wrapping — just the file content."""
+Otherwise, reply with sections for each file that needs updating.
+Format:
+=== UserGuide.md ===
+<full updated content of UserGuide.md>
+
+=== README.md ===
+<full updated content of README.md>
+
+Omit any file that doesn't need changes. Do NOT add explanations or markdown wrapping."""
 
 resp = client.chat.completions.create(
     model="baidu/cobuddy:free",
@@ -36,15 +50,33 @@ resp = client.chat.completions.create(
 content = resp.choices[0].message.content.strip()
 
 if content == "NO_CHANGES":
-    print("UserGuide.md is in sync — no changes needed")
+    print("Docs are in sync — no changes needed")
     sys.exit(0)
 
-with open("UserGuide.md", "w") as f:
-    f.write(content)
+files_to_add = []
+parts = content.split("===")
+for part in parts:
+    part = part.strip()
+    if part.startswith("UserGuide.md"):
+        path = "UserGuide.md"
+        body = part.removeprefix("UserGuide.md").strip()
+    elif part.startswith("README.md"):
+        path = "README.md"
+        body = part.removeprefix("README.md").strip()
+    else:
+        continue
+    with open(path, "w") as f:
+        f.write(body + "\n")
+    files_to_add.append(path)
+    print(f"Updated {path}")
 
-print("UserGuide.md updated — committing")
+if not files_to_add:
+    print("No file updates parsed — exiting")
+    sys.exit(1)
+
+print(f"Committing {', '.join(files_to_add)}")
 subprocess.run(["git", "config", "user.name", "github-actions"], check=True)
 subprocess.run(["git", "config", "user.email", "github-actions@github.com"], check=True)
-subprocess.run(["git", "add", "UserGuide.md"], check=True)
-subprocess.run(["git", "commit", "-m", "docs: sync UserGuide.md with code [skip ci]"], check=True)
+subprocess.run(["git", "add"] + files_to_add, check=True)
+subprocess.run(["git", "commit", "-m", "docs: sync docs with code [skip ci]"], check=True)
 subprocess.run(["git", "push"], check=True)
