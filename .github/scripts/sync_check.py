@@ -42,12 +42,30 @@ Format:
 
 Omit any file that doesn't need changes. Do NOT add explanations or markdown wrapping."""
 
-resp = client.chat.completions.create(
-    model="meta-llama/llama-3.3-70b-instruct:free",
-    messages=[{"role": "user", "content": prompt}],
-    temperature=0,
-)
-content = resp.choices[0].message.content.strip()
+models = [
+    "mistralai/mistral-small-3.1:free",
+    "google/gemini-2.5-flash-preview:free",
+    "qwen/qwen2.5-72b-instruct:free",
+]
+
+last_err = None
+for model in models:
+    try:
+        resp = client.chat.completions.create(
+            model=model,
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0,
+        )
+        content = resp.choices[0].message.content.strip()
+        print(f"Model {model} succeeded")
+        break
+    except Exception as e:
+        last_err = e
+        print(f"Model {model} failed: {e}")
+        continue
+else:
+    print(f"All models failed. Last error: {last_err}")
+    sys.exit(1)
 
 if content == "NO_CHANGES":
     print("Docs are in sync — no changes needed")
